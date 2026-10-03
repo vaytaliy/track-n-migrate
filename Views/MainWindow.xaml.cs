@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using MailIntegrator.ViewModels;
 
@@ -80,12 +81,58 @@ public partial class MainWindow : Window
     {
         if (e.RemovedItems.OfType<ParcelRowViewModel>().Any(row => row.IsDraft))
         {
-            CommitDraft();
+            CommitDraft(refocusOnSuccess: false);
         }
 
-        if (!_isCommittingDraft && ParcelsGrid.SelectedItem is ParcelRowViewModel { IsDraft: true } draft)
+        // Open the tracking cell automatically when the draft row becomes current through the keyboard.
+        // For a mouse click the operator chose a specific cell, so leave that choice (and its editing)
+        // intact instead of redirecting the focus.
+        if (!_isCommittingDraft
+            && Mouse.LeftButton != MouseButtonState.Pressed
+            && ParcelsGrid.SelectedItem is ParcelRowViewModel { IsDraft: true } draft)
         {
             Dispatcher.BeginInvoke(() => BeginEditDraftTrackId(draft), DispatcherPriority.Input);
+        }
+    }
+
+    /// <summary>
+    /// Starts editing the clicked cell straight away, so an editable cell takes a single click instead of
+    /// the two clicks the platform requires.
+    /// </summary>
+    /// <param name="sender">The grid.</param>
+    /// <param name="e">The event arguments.</param>
+    private void OnParcelsGridPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left
+            || e.ClickCount != 1
+            || e.OriginalSource is not DependencyObject source)
+        {
+            return;
+        }
+
+        if (FindVisualAncestor<DataGridCell>(source) is not { IsEditing: false, IsReadOnly: false } cell)
+        {
+            return;
+        }
+
+        // Only template columns that declare an editing template can be switched into edit mode.
+        if (cell.Column is not DataGridTemplateColumn { CellEditingTemplate: not null } column
+            || cell.DataContext is not ParcelRowViewModel { IsEditable: true } row)
+        {
+            return;
+        }
+
+        ParcelsGrid.CurrentCell = new DataGridCellInfo(row, column);
+        ParcelsGrid.Focus();
+        if (!ParcelsGrid.BeginEdit())
+        {
+            return;
+        }
+
+        ParcelsGrid.UpdateLayout();
+        if (FindCellContent<TextBox>(row, column) is { } editor)
+        {
+            editor.Focus();
         }
     }
 
@@ -102,7 +149,7 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
-        CommitDraft();
+        CommitDraft(refocusOnSuccess: true);
     }
 
     /// <summary>
@@ -114,14 +161,25 @@ public partial class MainWindow : Window
     {
         if (!ParcelsGrid.IsKeyboardFocusWithin)
         {
-            CommitDraft();
+            CommitDraft(refocusOnSuccess: false);
         }
     }
 
     /// <summary>
+    /// Submits the draft row when the operator clicks the "add parcel" button.
+    /// </summary>
+    /// <param name="sender">The button.</param>
+    /// <param name="e">The event arguments.</param>
+    private void OnAddParcelClick(object sender, RoutedEventArgs e) => CommitDraft(refocusOnSuccess: true);
+
+    /// <summary>
     /// Commits pending cell edits and hands the draft row to the view model.
     /// </summary>
-    private void CommitDraft()
+    /// <param name="refocusOnSuccess">
+    /// When <see langword="true"/> the tracking number cell of the fresh draft row is opened again so
+    /// the operator can continue with the next parcel without reaching for the mouse.
+    /// </param>
+    private void CommitDraft(bool refocusOnSuccess)
     {
         if (_isCommittingDraft)
         {
@@ -134,11 +192,24 @@ public partial class MainWindow : Window
             ParcelsGrid.CommitEdit(DataGridEditingUnit.Cell, true);
             ParcelsGrid.CommitEdit(DataGridEditingUnit.Row, true);
 
-            var result = _viewModel.TryCommitDraft();
-            if (result == CommitDraftResult.Blocked && _viewModel.DraftRow is { } draft)
+            switch (_viewModel.TryCommitDraft())
             {
-                // Keep the operator in the offending cell so the inline validation message stays visible.
-                BeginEditDraftTrackId(draft);
+                // Keep the operator in the first required cell that still needs a value, so the inline
+                // validation message stays visible and nothing else steals the focus.
+                case CommitDraftResult.Blocked when _viewModel.DraftRow is { } blockedDraft:
+                    FocusFirstInvalidDraftField(blockedDraft);
+                    break;
+
+                // An explicit submit of an untouched draft should still land in the first required cell
+                // rather than silently doing nothing.
+                case CommitDraftResult.NothingToCommit when refocusOnSuccess && _viewModel.DraftRow is { } emptyDraft:
+                    BeginEditDraftTrackId(emptyDraft);
+                    break;
+
+                // The draft row was replaced, so aim at the new instance on the next dispatcher turn.
+                case CommitDraftResult.Succeeded when refocusOnSuccess && _viewModel.DraftRow is { } freshDraft:
+                    FocusDraftTrackId(freshDraft);
+                    break;
             }
         }
         finally
@@ -148,24 +219,176 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Moves the current cell to the tracking number of the draft row and starts editing it.
+    /// Selects and scrolls to the fresh draft row, then opens its tracking number cell once the
+    /// collection change has been applied by the grid.
+    /// </summary>
+    /// <param name="draft">The draft row to focus.</param>
+    private void FocusDraftTrackId(ParcelRowViewModel draft)
+    {
+        Dispatcher.BeginInvoke(
+            () =>
+            {
+                ParcelsGrid.SelectedItem = draft;
+                ParcelsGrid.ScrollIntoView(draft);
+                BeginEditDraftTrackId(draft);
+            },
+            DispatcherPriority.Input);
+    }
+
+    /// <summary>
+    /// Moves focus to the first required draft cell that still has a validation error, in the order the
+    /// operator is expected to fill them in (tracking number, then provider).
+    /// </summary>
+    /// <param name="draft">The blocked draft row.</param>
+    private void FocusFirstInvalidDraftField(ParcelRowViewModel draft)
+    {
+        if (HasValidationError(draft, nameof(ParcelRowViewModel.TrackId)))
+        {
+            BeginEditDraftTrackId(draft);
+            return;
+        }
+
+        if (HasValidationError(draft, nameof(ParcelRowViewModel.SelectedTrackingServiceCode)))
+        {
+            FocusDraftTrackingService(draft);
+        }
+    }
+
+    /// <summary>
+    /// Moves the current cell to the tracking number of the draft row and puts the caret in its editor.
     /// </summary>
     /// <param name="draft">The draft row to edit.</param>
     private void BeginEditDraftTrackId(ParcelRowViewModel draft)
     {
-        var trackIdColumn = ParcelsGrid.Columns
-            .FirstOrDefault(column => string.Equals(
-                column.SortMemberPath,
-                nameof(ParcelRowViewModel.TrackId),
-                StringComparison.Ordinal));
-
-        if (trackIdColumn is null)
+        if (FindDraftColumn(nameof(ParcelRowViewModel.TrackId)) is not { } trackIdColumn)
         {
             return;
         }
 
         ParcelsGrid.CurrentCell = new DataGridCellInfo(draft, trackIdColumn);
-        ParcelsGrid.BeginEdit();
+        ParcelsGrid.ScrollIntoView(draft);
+        ParcelsGrid.UpdateLayout();
+
+        // The grid must own the focus before it will switch the cell into edit mode.
         ParcelsGrid.Focus();
+        if (!ParcelsGrid.BeginEdit())
+        {
+            return;
+        }
+
+        ParcelsGrid.UpdateLayout();
+        if (FindCellContent<TextBox>(draft, trackIdColumn) is { } editor)
+        {
+            editor.Focus();
+            editor.SelectAll();
+        }
     }
+
+    /// <summary>
+    /// Moves the current cell to the provider of the draft row and focuses its dropdown, so a missing
+    /// provider is the only thing the operator has to interact with.
+    /// </summary>
+    /// <param name="draft">The draft row to focus.</param>
+    private void FocusDraftTrackingService(ParcelRowViewModel draft)
+    {
+        if (FindDraftColumn(nameof(ParcelRowViewModel.TrackingServiceCode)) is not { } serviceColumn)
+        {
+            return;
+        }
+
+        ParcelsGrid.CurrentCell = new DataGridCellInfo(draft, serviceColumn);
+        ParcelsGrid.ScrollIntoView(draft);
+        ParcelsGrid.UpdateLayout();
+
+        if (FindCellContent<ComboBox>(draft, serviceColumn) is { } providerSelector)
+        {
+            providerSelector.Focus();
+        }
+    }
+
+    /// <summary>
+    /// Finds a column of the parcel grid by the member it sorts on.
+    /// </summary>
+    /// <param name="sortMemberPath">The sort member path of the column to find.</param>
+    /// <returns>The matching column, or <see langword="null"/> when the grid has no such column.</returns>
+    private DataGridColumn? FindDraftColumn(string sortMemberPath) =>
+        ParcelsGrid.Columns.FirstOrDefault(column => string.Equals(
+            column.SortMemberPath,
+            sortMemberPath,
+            StringComparison.Ordinal));
+
+    /// <summary>
+    /// Returns the first visual child of the requested type that lives inside a realised cell.
+    /// </summary>
+    /// <param name="row">The row whose cell should be inspected.</param>
+    /// <param name="column">The column that identifies the cell.</param>
+    /// <typeparam name="TElement">The type of element to find.</typeparam>
+    /// <returns>The matching element, or <see langword="null"/> when the cell or child is absent.</returns>
+    private TElement? FindCellContent<TElement>(ParcelRowViewModel row, DataGridColumn column)
+        where TElement : DependencyObject
+    {
+        if (column.GetCellContent(row) is not DependencyObject cellContent)
+        {
+            return null;
+        }
+
+        return FindVisualDescendant<TElement>(cellContent);
+    }
+
+    /// <summary>
+    /// Walks the visual tree above an element and returns the first ancestor of the requested type.
+    /// </summary>
+    /// <param name="source">The element to start from.</param>
+    /// <typeparam name="TElement">The type of ancestor to find.</typeparam>
+    /// <returns>The matching ancestor, or <see langword="null"/> when no ancestor matches.</returns>
+    private static TElement? FindVisualAncestor<TElement>(DependencyObject? source)
+        where TElement : DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is TElement match)
+            {
+                return match;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Walks the visual tree below a root and returns the first descendant of the requested type.
+    /// </summary>
+    /// <param name="root">The visual root to search.</param>
+    /// <typeparam name="TElement">The type of element to find.</typeparam>
+    /// <returns>The matching element, or <see langword="null"/> when no descendant matches.</returns>
+    private static TElement? FindVisualDescendant<TElement>(DependencyObject root)
+        where TElement : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is TElement match)
+            {
+                return match;
+            }
+
+            if (FindVisualDescendant<TElement>(child) is { } descendant)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reports whether a draft cell currently holds a validation error.
+    /// </summary>
+    /// <param name="draft">The draft row to inspect.</param>
+    /// <param name="propertyName">The name of the validated property.</param>
+    /// <returns><see langword="true"/> when the property has at least one validation error.</returns>
+    private static bool HasValidationError(ParcelRowViewModel draft, string propertyName) =>
+        draft.GetErrors(propertyName).Cast<object>().Any();
 }

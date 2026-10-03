@@ -14,12 +14,26 @@ public interface IParcelService
     IReadOnlyList<Parcel> GetAllParcels();
 
     /// <summary>
-    /// Creates a parcel from a user supplied tracking number, applying the documented defaults.
+    /// Creates a parcel from a user supplied tracking number and provider, applying the documented defaults.
     /// </summary>
     /// <param name="trackId">The tracking number entered by the operator.</param>
+    /// <param name="trackingServiceCode">The code of a registered tracking provider.</param>
     /// <returns>The persisted parcel, including its generated identifier.</returns>
-    /// <exception cref="ParcelValidationException">The tracking number is missing, malformed or duplicated.</exception>
-    Parcel CreateParcel(string trackId);
+    /// <exception cref="ParcelValidationException">
+    /// The tracking number is missing, malformed or duplicated, or the provider code is unknown.
+    /// </exception>
+    Parcel CreateParcel(string trackId, string trackingServiceCode);
+
+    /// <summary>
+    /// Applies a tracking result to a parcel that has not reached a final status.
+    /// </summary>
+    /// <param name="id">The identifier of the parcel to update.</param>
+    /// <param name="result">The adapted provider answer.</param>
+    /// <returns>
+    /// <see langword="true"/> when the parcel was updated; <see langword="false"/> when it does not exist
+    /// or is already in a final state.
+    /// </returns>
+    bool ApplyTrackingResult(long id, TrackingResult result);
 
     /// <summary>
     /// Updates the fields an operator is allowed to change on a parcel that has not been exported to 1C.

@@ -20,11 +20,12 @@ namespace MailIntegrator.Services;
 public sealed class CredentialManagerSecretStore : ISecretStore
 {
     private const CredentialPersistence Persistence = CredentialPersistence.LocalMachine;
+    private const string TargetNamePrefix = "MailIntegrator/";
 
     /// <inheritdoc />
-    public StoredCredential? GetCredential(SecretService service)
+    public StoredCredential? GetCredential(CredentialTarget target)
     {
-        var credential = CredentialManager.ReadCredential(service.ToTargetName());
+        var credential = CredentialManager.ReadCredential(BuildTargetName(target));
         if (credential is null)
         {
             return null;
@@ -34,18 +35,31 @@ public sealed class CredentialManagerSecretStore : ISecretStore
     }
 
     /// <inheritdoc />
-    public void SaveCredential(SecretService service, string login, string password)
+    public void SaveCredential(CredentialTarget target, string login, string password)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(login);
         ArgumentNullException.ThrowIfNull(password);
 
-        CredentialManager.WriteCredential(service.ToTargetName(), login, password, Persistence);
+        CredentialManager.WriteCredential(BuildTargetName(target), login, password, Persistence);
     }
 
     /// <inheritdoc />
-    public bool DeleteCredential(SecretService service) =>
-        CredentialManager.TryDeleteCredential(service.ToTargetName());
+    public bool DeleteCredential(CredentialTarget target) =>
+        CredentialManager.TryDeleteCredential(BuildTargetName(target));
 
     /// <inheritdoc />
-    public bool IsConfigured(SecretService service) => GetCredential(service) is not null;
+    public bool IsConfigured(CredentialTarget target) => GetCredential(target) is not null;
+
+    /// <summary>
+    /// Builds the vault target name for a credential target.
+    /// </summary>
+    /// <param name="target">The target to name.</param>
+    /// <returns>The Windows Credential Manager target name.</returns>
+    /// <exception cref="ArgumentException">The target code is blank.</exception>
+    private static string BuildTargetName(CredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentException.ThrowIfNullOrWhiteSpace(target.Code);
+        return TargetNamePrefix + target.Code;
+    }
 }

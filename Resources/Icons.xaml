@@ -10,6 +10,9 @@
     <PathGeometry x:Key="LockGeometry"
                   Figures="M 5.5,7 V 4.75 A 3.25,3.25 0 0 1 12,4.75 V 7 M 3.5,7 H 14 V 15.5 H 3.5 Z" />
 
+    <!-- Plus sign on the "add parcel" button of the draft row. -->
+    <PathGeometry x:Key="AddGeometry" Figures="M 8,2.5 V 13.5 M 2.5,8 H 13.5" />
+
     <!-- Pencil affordance indicating that a cell can be edited. -->
     <PathGeometry x:Key="PencilGeometry"
                   Figures="M 2,17 V 14 L 13,3 L 16,6 L 5,17 Z M 11,5 L 14,8" />

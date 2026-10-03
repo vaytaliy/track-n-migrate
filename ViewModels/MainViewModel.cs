@@ -16,9 +16,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private static readonly TimeSpan DraftClockInterval = TimeSpan.FromSeconds(1);
 
     private readonly IParcelService _parcelService;
-    private readonly ISyncService _syncService;
+    private readonly ITrackingSyncService _trackingSyncService;
+    private readonly IMigrationSyncService _migrationSyncService;
     private readonly IDialogService _dialogService;
     private readonly IClock _clock;
+    private readonly ILocalTimeZone _localTimeZone;
     private readonly DispatcherTimer _draftClockTimer;
 
     private bool _disposed;
@@ -39,19 +41,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// Initializes a new instance of the <see cref="MainViewModel"/> class.
     /// </summary>
     /// <param name="parcelService">The parcel business rules.</param>
-    /// <param name="syncService">The synchronisation entry point.</param>
+    /// <param name="trackingSyncService">The tracking pass behind "Запросить статус посылок".</param>
+    /// <param name="migrationSyncService">The migration pass behind "Экспорт в 1С".</param>
     /// <param name="dialogService">The modal window abstraction.</param>
     /// <param name="clock">The clock used for creation timestamps and the draft row display.</param>
+    /// <param name="localTimeZone">The zone used to render UTC instants.</param>
+    /// <param name="trackingServiceRegistry">Supplies the providers offered in the grid dropdown.</param>
     public MainViewModel(
         IParcelService parcelService,
-        ISyncService syncService,
+        ITrackingSyncService trackingSyncService,
+        IMigrationSyncService migrationSyncService,
         IDialogService dialogService,
-        IClock clock)
+        IClock clock,
+        ILocalTimeZone localTimeZone,
+        ITrackingServiceRegistry trackingServiceRegistry)
     {
         _parcelService = parcelService ?? throw new ArgumentNullException(nameof(parcelService));
-        _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
+        _trackingSyncService = trackingSyncService ?? throw new ArgumentNullException(nameof(trackingSyncService));
+        _migrationSyncService = migrationSyncService ?? throw new ArgumentNullException(nameof(migrationSyncService));
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _localTimeZone = localTimeZone ?? throw new ArgumentNullException(nameof(localTimeZone));
+        ArgumentNullException.ThrowIfNull(trackingServiceRegistry);
+
+        TrackingServices = trackingServiceRegistry.Services
+            .Select(service => service.Descriptor)
+            .ToList();
 
         Parcels = [];
         Sync = new SyncStatusViewModel();
@@ -71,6 +86,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// Gets the status strip state.
     /// </summary>
     public SyncStatusViewModel Sync { get; }
+
+    /// <summary>
+    /// Gets the tracking providers offered on the draft row, in registry order.
+    /// </summary>
+    public IReadOnlyList<TrackingServiceDescriptor> TrackingServices { get; }
 
     /// <summary>
     /// Loads the stored parcels and starts the draft row clock.
@@ -100,8 +120,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var parcel = _parcelService.CreateParcel(draft.TrackId);
-            var committedRow = ParcelRowViewModel.ForExisting(parcel, _clock, IsTrackIdAvailable);
+            var parcel = _parcelService.CreateParcel(draft.TrackId, draft.SelectedTrackingServiceCode);
+            var committedRow = CreateRow(parcel);
 
             // The default ordering is creation instant descending, so a new parcel belongs at the top.
             Parcels.Insert(0, committedRow);
@@ -133,18 +153,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Runs a simulated synchronisation pass for the "Запросить статус посылок" action.
+    /// Runs a tracking pass for the "Запросить статус посылок" action.
     /// </summary>
     /// <param name="cancellationToken">Cancels the pass.</param>
     [RelayCommand]
-    private Task RequestStatusesAsync(CancellationToken cancellationToken) => RunSyncAsync(cancellationToken);
+    private Task RequestStatusesAsync(CancellationToken cancellationToken) =>
+        RunPassAsync(_trackingSyncService.RunAsync, reloadParcelsOnSuccess: true, cancellationToken);
 
     /// <summary>
-    /// Runs a simulated synchronisation pass for the "Экспорт в 1С" action.
+    /// Runs a migration pass for the "Экспорт в 1С" action.
     /// </summary>
     /// <param name="cancellationToken">Cancels the pass.</param>
     [RelayCommand]
-    private Task MigrateTo1CAsync(CancellationToken cancellationToken) => RunSyncAsync(cancellationToken);
+    private Task MigrateTo1CAsync(CancellationToken cancellationToken) =>
+        RunPassAsync(_migrationSyncService.RunAsync, reloadParcelsOnSuccess: false, cancellationToken);
 
     /// <summary>
     /// Removes a parcel that has not been exported to 1C, after confirmation.
@@ -188,18 +210,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void OpenSettings() => _dialogService.ShowSettings();
 
     /// <summary>
-    /// Reloads the grid from storage and re-creates the draft row.
+    /// Builds a row view model for a persisted parcel.
+    /// </summary>
+    /// <param name="parcel">The persisted parcel.</param>
+    /// <returns>The row view model.</returns>
+    private ParcelRowViewModel CreateRow(Parcel parcel) =>
+        ParcelRowViewModel.ForExisting(
+            parcel,
+            _clock,
+            _localTimeZone,
+            TrackingServices,
+            IsTrackIdAvailable);
+
+    /// <summary>
+    /// Reloads the grid from storage, keeping any text the operator already typed on the draft row.
     /// </summary>
     private void ReloadParcels()
     {
+        var pendingTrackId = DraftRow?.TrackId ?? string.Empty;
+        var pendingProvider = DraftRow?.SelectedTrackingServiceCode ?? string.Empty;
+
         Parcels.Clear();
 
         foreach (var parcel in _parcelService.GetAllParcels())
         {
-            Parcels.Add(ParcelRowViewModel.ForExisting(parcel, _clock, IsTrackIdAvailable));
+            Parcels.Add(CreateRow(parcel));
         }
 
         AppendDraftRow();
+
+        if (!string.IsNullOrWhiteSpace(pendingTrackId) || !string.IsNullOrWhiteSpace(pendingProvider))
+        {
+            DraftRow!.TrackId = pendingTrackId;
+            DraftRow!.SelectedTrackingServiceCode = pendingProvider;
+        }
+
         RenumberRows();
     }
 
@@ -208,7 +253,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void AppendDraftRow()
     {
-        var draft = ParcelRowViewModel.CreateDraft(_clock, IsTrackIdAvailable);
+        var draft = ParcelRowViewModel.CreateDraft(
+            _clock,
+            _localTimeZone,
+            TrackingServices,
+            IsTrackIdAvailable);
+
         DraftRow = draft;
         Parcels.Add(draft);
     }
@@ -240,18 +290,28 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _parcelService.IsTrackIdAvailable(trackId, excludingId);
 
     /// <summary>
-    /// Drives the status strip through a synchronisation pass.
+    /// Drives the status strip through one synchronisation pass.
     /// </summary>
+    /// <param name="pass">The pass to execute.</param>
+    /// <param name="reloadParcelsOnSuccess">Whether a successful pass changed parcel data and needs a reload.</param>
     /// <param name="cancellationToken">Cancels the pass.</param>
-    private async Task RunSyncAsync(CancellationToken cancellationToken)
+    private async Task RunPassAsync(
+        Func<CancellationToken, Task> pass,
+        bool reloadParcelsOnSuccess,
+        CancellationToken cancellationToken)
     {
         Sync.LastErrorMessage = null;
         Sync.State = SyncState.InProgress;
 
         try
         {
-            await _syncService.RunAsync(cancellationToken);
+            await pass(cancellationToken);
             Sync.State = SyncState.Succeeded;
+
+            if (reloadParcelsOnSuccess)
+            {
+                ReloadParcels();
+            }
         }
         catch (OperationCanceledException)
         {

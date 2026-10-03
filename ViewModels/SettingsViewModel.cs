@@ -9,7 +9,8 @@ namespace MailIntegrator.ViewModels;
 /// </summary>
 /// <remarks>
 /// Secrets are written straight to Windows Credential Manager; nothing is persisted in the application
-/// database or in any configuration file.
+/// database or in any configuration file. The editor list is driven by the tracking provider registry,
+/// so registering a provider automatically adds its credential editor here.
 /// </remarks>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -22,13 +23,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>
     /// Initializes a new instance of the <see cref="SettingsViewModel"/> class.
     /// </summary>
+    /// <param name="trackingServiceRegistry">Supplies one credential editor per registered provider.</param>
     /// <param name="secretStore">The vault that stores the credentials.</param>
-    public SettingsViewModel(ISecretStore secretStore)
+    public SettingsViewModel(ITrackingServiceRegistry trackingServiceRegistry, ISecretStore secretStore)
     {
+        ArgumentNullException.ThrowIfNull(trackingServiceRegistry);
         ArgumentNullException.ThrowIfNull(secretStore);
 
-        Services = SecretServices.All
-            .Select(service => new ServiceCredentialsViewModel(service, secretStore))
+        Services = trackingServiceRegistry.Services
+            .Select(service => service.Descriptor.ToCredentialTarget())
+            .Append(CredentialTargets.OneC)
+            .Select(target => new ServiceCredentialsViewModel(target, secretStore))
             .ToList();
     }
 
@@ -38,7 +43,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public event EventHandler<bool>? CloseRequested;
 
     /// <summary>
-    /// Gets the credential editors, one per supported service.
+    /// Gets the credential editors, one per registered provider followed by the 1C target.
     /// </summary>
     public IReadOnlyList<ServiceCredentialsViewModel> Services { get; }
 

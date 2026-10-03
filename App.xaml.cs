@@ -23,17 +23,27 @@ public partial class App : Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
 
         var clock = new SystemClock();
+        var localTimeZone = new SystemLocalTimeZone();
 
         _database = new AppDatabase(AppPaths.DatabaseFile);
         _database.Initialize();
 
         var parcelRepository = new ParcelRepository(_database);
-        var parcelService = new ParcelService(parcelRepository, clock);
+        var trackingServiceRegistry = new TrackingServiceRegistry(DummyTrackingServices.CreateAll());
+        var parcelService = new ParcelService(parcelRepository, clock, trackingServiceRegistry);
         var secretStore = new CredentialManagerSecretStore();
-        var syncService = new DummySyncService();
-        var dialogService = new WpfDialogService(() => new SettingsViewModel(secretStore));
+        var trackingSyncService = new ParcelTrackingSyncService(parcelService, trackingServiceRegistry, secretStore);
+        var migrationSyncService = new DummyMigrationSyncService();
+        var dialogService = new WpfDialogService(() => new SettingsViewModel(trackingServiceRegistry, secretStore));
 
-        _mainViewModel = new MainViewModel(parcelService, syncService, dialogService, clock);
+        _mainViewModel = new MainViewModel(
+            parcelService,
+            trackingSyncService,
+            migrationSyncService,
+            dialogService,
+            clock,
+            localTimeZone,
+            trackingServiceRegistry);
         _mainViewModel.Initialize();
 
         var mainWindow = new MainWindow(_mainViewModel);

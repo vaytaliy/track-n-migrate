@@ -1,13 +1,12 @@
-using MailIntegrator.Infrastructure;
-
 namespace MailIntegrator.Models;
 
 /// <summary>
-/// A tracked parcel and its synchronisation state with the Почта России and 1C ERP services.
+/// A tracked parcel and its synchronisation state with a tracking provider and the 1C ERP target.
 /// </summary>
 /// <remarks>
-/// Every <see cref="DateTime"/> property is persisted in UTC. The Moscow time projections are
-/// read-only convenience members for presentation and are never written to the database.
+/// Every <see cref="DateTime"/> property is persisted in UTC; the row view model converts to the
+/// workstation's local time for display. <see cref="TrackingServiceCode"/> is written once at creation
+/// and is never modified afterwards.
 /// </remarks>
 public sealed class Parcel
 {
@@ -20,6 +19,13 @@ public sealed class Parcel
     /// Gets or sets the carrier tracking number. Required and unique (case-insensitive).
     /// </summary>
     public string TrackId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the code of the tracking provider that owns this parcel.
+    /// <see langword="null"/> for rows created before providers existed; set on creation and read-only
+    /// afterwards.
+    /// </summary>
+    public string? TrackingServiceCode { get; set; }
 
     /// <summary>
     /// Gets or sets the instant the parcel record was created, in UTC.
@@ -37,14 +43,15 @@ public sealed class Parcel
     public DateTime? ReceivedDatetimeUtc { get; set; }
 
     /// <summary>
-    /// Gets or sets the last time the carrier status was polled, in UTC.
+    /// Gets or sets the instant of the last status report, in UTC. It is populated by a synchronisation
+    /// pass from <see cref="Services.TrackingResult.StatusDatetimeUtc"/>.
     /// </summary>
     public DateTime? LastCheckedDatetimeUtc { get; set; }
 
     /// <summary>
-    /// Gets or sets the most recently observed carrier status text.
+    /// Gets or sets the most recently observed generic status.
     /// </summary>
-    public string? LastStatus { get; set; }
+    public ParcelStatus? LastStatus { get; set; }
 
     /// <summary>
     /// Gets or sets the free-form operator comment.
@@ -61,24 +68,4 @@ public sealed class Parcel
     /// Gets or sets the instant the parcel was exported to 1C ERP, in UTC.
     /// </summary>
     public DateTime? MigratedTo1CDatetimeUtc { get; set; }
-
-    /// <summary>
-    /// Gets the creation instant expressed in Moscow time.
-    /// </summary>
-    public DateTime CreatedDatetimeMsk => MoscowTime.ToMoscow(CreatedDatetimeUtc);
-
-    /// <summary>
-    /// Gets the dispatch instant expressed in Moscow time.
-    /// </summary>
-    public DateTime? SentDatetimeMsk => MoscowTime.ToMoscow(SentDatetimeUtc);
-
-    /// <summary>
-    /// Gets the delivery instant expressed in Moscow time.
-    /// </summary>
-    public DateTime? ReceivedDatetimeMsk => MoscowTime.ToMoscow(ReceivedDatetimeUtc);
-
-    /// <summary>
-    /// Gets the last status check instant expressed in Moscow time.
-    /// </summary>
-    public DateTime? LastCheckedDatetimeMsk => MoscowTime.ToMoscow(LastCheckedDatetimeUtc);
 }

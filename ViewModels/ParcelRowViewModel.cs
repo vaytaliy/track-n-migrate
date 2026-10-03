@@ -3,6 +3,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MailIntegrator.Infrastructure;
 using MailIntegrator.Models;
+using MailIntegrator.Services;
 
 namespace MailIntegrator.ViewModels;
 
@@ -11,7 +12,8 @@ namespace MailIntegrator.ViewModels;
 /// </summary>
 /// <remarks>
 /// Existing rows wrap a persisted <see cref="Parcel"/>; the draft row wraps an unsaved instance whose
-/// creation instant tracks the clock until the operator commits it.
+/// creation instant tracks the clock until the operator commits it. Timestamps are stored in UTC and
+/// converted through <see cref="ILocalTimeZone"/> for display.
 /// </remarks>
 public sealed partial class ParcelRowViewModel : ObservableValidator
 {
@@ -33,11 +35,15 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// <summary>The prompt shown in the tracking number cell of the draft row.</summary>
     public const string DraftTrackIdPlaceholder = "ВВЕДИТЕ ТРЕК-НОМЕР";
 
+    /// <summary>The prompt shown in the provider cell of the draft row.</summary>
+    public const string DraftTrackingServicePlaceholder = "Выберите службу";
+
     /// <summary>The caption shown under the comment of a parcel that was exported to 1C.</summary>
     public const string LockedCommentCaption = "(заблокировано для редактирования)";
 
     private readonly Parcel _parcel;
     private readonly IClock _clock;
+    private readonly ILocalTimeZone _localTimeZone;
     private readonly Func<string, long?, bool> _isTrackIdAvailable;
 
     /// <summary>
@@ -61,26 +67,41 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     private int _rowNumber;
 
     /// <summary>
+    /// Backing field for <see cref="SelectedTrackingServiceCode"/>. Set on the draft row and read-only
+    /// on saved rows.
+    /// </summary>
+    [ObservableProperty]
+    [Required(ErrorMessage = "Укажите службу доставки")]
+    private string _selectedTrackingServiceCode;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="ParcelRowViewModel"/> class.
     /// </summary>
     /// <param name="parcel">The parcel backing the row.</param>
     /// <param name="isDraft">Whether the row is the unsaved draft row.</param>
     /// <param name="clock">The clock used to display the draft's automatic creation instant.</param>
+    /// <param name="localTimeZone">The zone used to render UTC instants.</param>
+    /// <param name="trackingServices">The provider descriptors offered by the registry.</param>
     /// <param name="isTrackIdAvailable">Callback that reports whether a tracking number is still free.</param>
     private ParcelRowViewModel(
         Parcel parcel,
         bool isDraft,
         IClock clock,
+        ILocalTimeZone localTimeZone,
+        IReadOnlyList<TrackingServiceDescriptor> trackingServices,
         Func<string, long?, bool> isTrackIdAvailable)
     {
         _parcel = parcel;
         _clock = clock;
+        _localTimeZone = localTimeZone;
         _isTrackIdAvailable = isTrackIdAvailable;
+        TrackingServices = trackingServices;
         IsDraft = isDraft;
 
         // Assign the backing fields directly so that constructing a row does not run validation.
         _trackId = parcel.TrackId;
         _comment = parcel.Comment ?? string.Empty;
+        _selectedTrackingServiceCode = parcel.TrackingServiceCode ?? string.Empty;
     }
 
     /// <summary>
@@ -88,32 +109,43 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// </summary>
     /// <param name="parcel">The persisted parcel.</param>
     /// <param name="clock">The clock used for display only.</param>
+    /// <param name="localTimeZone">The zone used to render UTC instants.</param>
+    /// <param name="trackingServices">The provider descriptors offered by the registry.</param>
     /// <param name="isTrackIdAvailable">Callback that reports whether a tracking number is still free.</param>
     /// <returns>The row view model.</returns>
     public static ParcelRowViewModel ForExisting(
         Parcel parcel,
         IClock clock,
+        ILocalTimeZone localTimeZone,
+        IReadOnlyList<TrackingServiceDescriptor> trackingServices,
         Func<string, long?, bool> isTrackIdAvailable) =>
-        new(parcel, isDraft: false, clock, isTrackIdAvailable);
+        new(parcel, isDraft: false, clock, localTimeZone, trackingServices, isTrackIdAvailable);
 
     /// <summary>
     /// Creates the unsaved draft row shown at the bottom of the grid.
     /// </summary>
     /// <param name="clock">The clock that supplies the automatic creation instant.</param>
+    /// <param name="localTimeZone">The zone used to render UTC instants.</param>
+    /// <param name="trackingServices">The provider descriptors offered by the registry.</param>
     /// <param name="isTrackIdAvailable">Callback that reports whether a tracking number is still free.</param>
     /// <returns>The draft row view model.</returns>
     public static ParcelRowViewModel CreateDraft(
         IClock clock,
+        ILocalTimeZone localTimeZone,
+        IReadOnlyList<TrackingServiceDescriptor> trackingServices,
         Func<string, long?, bool> isTrackIdAvailable) =>
         new(
             new Parcel
             {
                 TrackId = string.Empty,
+                TrackingServiceCode = null,
                 CreatedDatetimeUtc = clock.UtcNow,
                 IsMigratedTo1CFlag = false,
             },
             isDraft: true,
             clock,
+            localTimeZone,
+            trackingServices,
             isTrackIdAvailable);
 
     /// <summary>
@@ -125,6 +157,11 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// Gets the identifier of the backing parcel; zero for the draft row.
     /// </summary>
     public long Id => _parcel.Id;
+
+    /// <summary>
+    /// Gets the providers the operator can choose from on the draft row.
+    /// </summary>
+    public IReadOnlyList<TrackingServiceDescriptor> TrackingServices { get; }
 
     // The raw UTC values below exist so grid columns can sort chronologically rather than by the
     // formatted display text.
@@ -145,7 +182,7 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     public DateTime? ReceivedDatetimeUtc => _parcel.ReceivedDatetimeUtc;
 
     /// <summary>
-    /// Gets the raw last-check instant, used for chronological sorting.
+    /// Gets the raw last status report instant, used for chronological sorting.
     /// </summary>
     public DateTime? LastCheckedDatetimeUtc => _parcel.LastCheckedDatetimeUtc;
 
@@ -155,9 +192,14 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     public DateTime? MigratedTo1CDatetimeUtc => _parcel.MigratedTo1CDatetimeUtc;
 
     /// <summary>
-    /// Gets the raw carrier status text, used for sorting.
+    /// Gets the persisted provider code, used for sorting and display.
     /// </summary>
-    public string? LastStatus => _parcel.LastStatus;
+    public string? TrackingServiceCode => _parcel.TrackingServiceCode;
+
+    /// <summary>
+    /// Gets the generic status, used for sorting and for the badge triggers in the view.
+    /// </summary>
+    public ParcelStatus? Status => _parcel.LastStatus;
 
     /// <summary>
     /// Gets a value indicating whether the parcel was exported to 1C and is therefore read-only.
@@ -181,14 +223,10 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     public bool HasTrackId => !string.IsNullOrWhiteSpace(TrackId);
 
     /// <summary>
-    /// Validates every editable column and reports whether the row can be persisted.
+    /// Gets a value indicating whether the provider cell has no value and should render its prompt.
     /// </summary>
-    /// <returns><see langword="true"/> when no validation error remains.</returns>
-    public bool ValidateForSave()
-    {
-        ValidateAllProperties();
-        return !HasErrors;
-    }
+    public bool IsTrackingServiceMissing =>
+        string.IsNullOrWhiteSpace(IsDraft ? SelectedTrackingServiceCode : _parcel.TrackingServiceCode);
 
     /// <summary>
     /// Gets a value indicating whether the comment column should render its prompt instead of a value.
@@ -199,6 +237,11 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// Gets a value indicating whether the comment lock caption should be shown.
     /// </summary>
     public bool ShowLockedCommentCaption => IsMigratedTo1CFlag;
+
+    /// <summary>
+    /// Gets a value indicating whether a generic status has been observed.
+    /// </summary>
+    public bool HasLastStatus => _parcel.LastStatus is not null;
 
     /// <summary>
     /// Gets the row number shown in the leading column, or an asterisk for the draft row.
@@ -215,7 +258,29 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
             : TrackId;
 
     /// <summary>
-    /// Gets the creation instant formatted for display. Moscow time for saved rows, live clock for the draft.
+    /// Gets the provider cell text: the selected display name on the draft row, the persisted provider
+    /// name on saved rows, or the appropriate placeholder.
+    /// </summary>
+    public string TrackingServiceDisplay
+    {
+        get
+        {
+            if (IsDraft)
+            {
+                return IsTrackingServiceMissing
+                    ? DraftTrackingServicePlaceholder
+                    : ResolveTrackingServiceName(SelectedTrackingServiceCode);
+            }
+
+            return IsTrackingServiceMissing
+                ? EmptyValueDisplay
+                : ResolveTrackingServiceName(_parcel.TrackingServiceCode!);
+        }
+    }
+
+    /// <summary>
+    /// Gets the creation instant formatted for display: live local time on the draft row, the persisted
+    /// instant on saved rows.
     /// </summary>
     public string CreatedDatetimeDisplay
     {
@@ -223,55 +288,45 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
         {
             if (IsDraft)
             {
-                return $"{Format(_clock.UtcNow)} ({AutomaticValueDisplay})";
+                return $"{FormatLocal(_clock.UtcNow)} ({AutomaticValueDisplay})";
             }
 
-            return Format(_parcel.CreatedDatetimeUtc);
+            return FormatLocal(_parcel.CreatedDatetimeUtc);
         }
     }
 
     /// <summary>
-    /// Gets the dispatch instant formatted for display in Moscow time, or the automatic marker on the
-    /// draft row because the value is only known after the carrier is contacted.
+    /// Gets the dispatch instant in local time, or the automatic marker on the draft row because the
+    /// value is only known after the carrier is contacted.
     /// </summary>
     public string SentDatetimeDisplay =>
-        IsDraft ? AutomaticValueDisplay : FormatOptional(_parcel.SentDatetimeUtc);
+        IsDraft ? AutomaticValueDisplay : FormatOptionalLocal(_parcel.SentDatetimeUtc);
 
     /// <summary>
-    /// Gets the delivery instant formatted for display in Moscow time, or the automatic marker on the
-    /// draft row.
+    /// Gets the delivery instant in local time, or the automatic marker on the draft row.
     /// </summary>
     public string ReceivedDatetimeDisplay =>
-        IsDraft ? AutomaticValueDisplay : FormatOptional(_parcel.ReceivedDatetimeUtc);
+        IsDraft ? AutomaticValueDisplay : FormatOptionalLocal(_parcel.ReceivedDatetimeUtc);
 
     /// <summary>
-    /// Gets the last status check instant formatted for display in Moscow time.
+    /// Gets the last status report instant in local time, or the automatic marker on the draft row.
     /// </summary>
-    /// <remarks>
-    /// Stored in UTC, displayed in Moscow time like the other business timestamps. The approved mockup
-    /// shows no suffix for this column.
-    /// </remarks>
     public string LastCheckedDatetimeDisplay =>
-        IsDraft ? AutomaticValueDisplay : FormatOptional(_parcel.LastCheckedDatetimeUtc);
+        IsDraft ? AutomaticValueDisplay : FormatOptionalLocal(_parcel.LastCheckedDatetimeUtc);
 
     /// <summary>
-    /// Gets the 1C export instant formatted for display in UTC.
+    /// Gets the 1C export instant formatted in UTC, or the automatic marker on the draft row.
     /// </summary>
     public string MigratedTo1CDatetimeDisplay =>
         IsDraft ? AutomaticValueDisplay : FormatOptionalUtc(_parcel.MigratedTo1CDatetimeUtc);
 
     /// <summary>
-    /// Gets the carrier status text, or the empty-value placeholder when no status was observed yet.
-    /// The draft row shows the automatic marker instead, because the status is filled in by a sync run.
+    /// Gets the localized status label, the empty-value placeholder when no status was observed, or the
+    /// automatic marker on the draft row.
     /// </summary>
-    public string LastStatusDisplay => IsDraft
+    public string StatusLabel => IsDraft
         ? AutomaticValueDisplay
-        : (string.IsNullOrWhiteSpace(_parcel.LastStatus) ? EmptyValueDisplay : _parcel.LastStatus!);
-
-    /// <summary>
-    /// Gets a value indicating whether a carrier status has been observed.
-    /// </summary>
-    public bool HasLastStatus => !string.IsNullOrWhiteSpace(_parcel.LastStatus);
+        : _parcel.LastStatus is { } status ? status.ToDisplayLabel() : EmptyValueDisplay;
 
     /// <summary>
     /// Gets the comment cell text, falling back to the appropriate prompt.
@@ -282,6 +337,16 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
                 ? DraftCommentPlaceholder
                 : (IsMigratedTo1CFlag ? EmptyValueDisplay : EmptyCommentPlaceholder))
             : Comment;
+
+    /// <summary>
+    /// Validates every editable column and reports whether the row can be persisted.
+    /// </summary>
+    /// <returns><see langword="true"/> when no validation error remains.</returns>
+    public bool ValidateForSave()
+    {
+        ValidateAllProperties();
+        return !HasErrors;
+    }
 
     /// <summary>
     /// Validates that a tracking number is not already used by another parcel.
@@ -340,23 +405,35 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     public Parcel GetParcel() => _parcel;
 
     /// <summary>
-    /// Formats a mandatory timestamp as Moscow time.
+    /// Resolves a provider code to its display name, falling back to the code itself for a provider that
+    /// is no longer registered.
+    /// </summary>
+    /// <param name="code">The provider code to resolve.</param>
+    /// <returns>The display name shown to the operator.</returns>
+    private string ResolveTrackingServiceName(string code) =>
+        TrackingServices
+            .FirstOrDefault(descriptor => string.Equals(descriptor.Code, code, StringComparison.OrdinalIgnoreCase))
+            ?.DisplayName
+        ?? code;
+
+    /// <summary>
+    /// Formats a mandatory instant in local time.
     /// </summary>
     /// <param name="utc">The instant to format.</param>
     /// <returns>The formatted text.</returns>
-    private static string Format(DateTime utc) =>
-        MoscowTime.ToMoscow(utc).ToString(TimestampFormat, CultureInfo.InvariantCulture);
+    private string FormatLocal(DateTime utc) =>
+        _localTimeZone.ToLocal(utc).ToString(TimestampFormat, CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Formats an optional Moscow timestamp, or the empty-value placeholder.
+    /// Formats an optional instant in local time, or the empty-value placeholder.
     /// </summary>
     /// <param name="utc">The instant to format.</param>
     /// <returns>The formatted text.</returns>
-    private static string FormatOptional(DateTime? utc) =>
-        utc is null ? EmptyValueDisplay : Format(utc.Value);
+    private string FormatOptionalLocal(DateTime? utc) =>
+        utc is null ? EmptyValueDisplay : FormatLocal(utc.Value);
 
     /// <summary>
-    /// Formats an optional UTC timestamp with an explicit UTC marker, or the empty-value placeholder.
+    /// Formats an optional UTC instant with an explicit UTC marker, or the empty-value placeholder.
     /// </summary>
     /// <param name="utc">The instant to format.</param>
     /// <returns>The formatted text.</returns>
@@ -383,6 +460,16 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     {
         OnPropertyChanged(nameof(CommentDisplay));
         OnPropertyChanged(nameof(IsCommentPlaceholder));
+    }
+
+    /// <summary>
+    /// Notifies the computed display members when the selected provider changes.
+    /// </summary>
+    /// <param name="value">The new provider code.</param>
+    partial void OnSelectedTrackingServiceCodeChanged(string value)
+    {
+        OnPropertyChanged(nameof(TrackingServiceDisplay));
+        OnPropertyChanged(nameof(IsTrackingServiceMissing));
     }
 
     /// <summary>

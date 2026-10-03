@@ -11,6 +11,7 @@ public sealed class ParcelRepository : IParcelRepository
     private const string SelectColumns = """
         Id,
         TrackId,
+        TrackingServiceCode,
         CreatedDatetimeUtc,
         SentDatetimeUtc,
         ReceivedDatetimeUtc,
@@ -24,6 +25,7 @@ public sealed class ParcelRepository : IParcelRepository
     private const string InsertSql = """
         INSERT INTO Parcels (
             TrackId,
+            TrackingServiceCode,
             CreatedDatetimeUtc,
             SentDatetimeUtc,
             ReceivedDatetimeUtc,
@@ -34,6 +36,7 @@ public sealed class ParcelRepository : IParcelRepository
             MigratedTo1CDatetimeUtc)
         VALUES (
             $trackId,
+            $trackingServiceCode,
             $createdDatetimeUtc,
             $sentDatetimeUtc,
             $receivedDatetimeUtc,
@@ -100,11 +103,12 @@ public sealed class ParcelRepository : IParcelRepository
         var id = connection.ExecuteScalar<long>(InsertSql, new
         {
             trackId = parcel.TrackId,
+            trackingServiceCode = parcel.TrackingServiceCode,
             createdDatetimeUtc = parcel.CreatedDatetimeUtc,
             sentDatetimeUtc = parcel.SentDatetimeUtc,
             receivedDatetimeUtc = parcel.ReceivedDatetimeUtc,
             lastCheckedDatetimeUtc = parcel.LastCheckedDatetimeUtc,
-            lastStatus = parcel.LastStatus,
+            lastStatus = parcel.LastStatus?.ToString(),
             comment = parcel.Comment,
             isMigratedTo1CFlag = parcel.IsMigratedTo1CFlag,
             migratedTo1CDatetimeUtc = parcel.MigratedTo1CDatetimeUtc,
@@ -127,7 +131,7 @@ public sealed class ParcelRepository : IParcelRepository
             sentDatetimeUtc = parcel.SentDatetimeUtc,
             receivedDatetimeUtc = parcel.ReceivedDatetimeUtc,
             lastCheckedDatetimeUtc = parcel.LastCheckedDatetimeUtc,
-            lastStatus = parcel.LastStatus,
+            lastStatus = parcel.LastStatus?.ToString(),
             comment = parcel.Comment,
             isMigratedTo1CFlag = parcel.IsMigratedTo1CFlag,
             migratedTo1CDatetimeUtc = parcel.MigratedTo1CDatetimeUtc,

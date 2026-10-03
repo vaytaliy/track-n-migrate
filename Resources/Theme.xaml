@@ -23,6 +23,8 @@
     <Color x:Key="SelectionColor">#FF2A4A72</Color>
     <Color x:Key="RowAlternateColor">#FF1F2226</Color>
     <Color x:Key="RowMigratedColor">#FF202327</Color>
+    <!-- Accent-tinted surface that marks the unsaved draft row as "new record". -->
+    <Color x:Key="RowDraftColor">#FF1E2A3A</Color>
 
     <Color x:Key="SuccessColor">#FF3FB950</Color>
     <Color x:Key="SuccessSurfaceColor">#FF16301C</Color>
@@ -53,6 +55,7 @@
     <SolidColorBrush x:Key="SelectionBrush" Color="{StaticResource SelectionColor}" />
     <SolidColorBrush x:Key="RowAlternateBrush" Color="{StaticResource RowAlternateColor}" />
     <SolidColorBrush x:Key="RowMigratedBrush" Color="{StaticResource RowMigratedColor}" />
+    <SolidColorBrush x:Key="RowDraftBrush" Color="{StaticResource RowDraftColor}" />
 
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
     <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="{StaticResource SuccessSurfaceColor}" />

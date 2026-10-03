@@ -6,8 +6,8 @@ namespace MailIntegrator.Data;
 /// Converts <see cref="DateTime"/> values to and from the ISO-8601 UTC text format used in SQLite.
 /// </summary>
 /// <remarks>
-/// The explicit trailing <c>Z</c> makes the stored kind unambiguous, which matters because the
-/// application mixes Moscow and UTC values and must never guess an offset when reading back.
+/// The explicit trailing <c>Z</c> makes the stored kind unambiguous, which matters because display
+/// converts to the local time zone and must never guess an offset when reading back.
 /// </remarks>
 public static class DateTimeStorage
 {

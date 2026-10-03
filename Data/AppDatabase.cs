@@ -2,6 +2,7 @@ using System.Data;
 using System.IO;
 using System.Reflection;
 using Dapper;
+using MailIntegrator.Models;
 using Microsoft.Data.Sqlite;
 
 namespace MailIntegrator.Data;
@@ -86,7 +87,8 @@ public sealed class AppDatabase
     /// <see cref="SqlMapper.RemoveTypeMap(System.Type)"/> is called first because Dapper consults its
     /// built-in type map before the registered handlers when it builds command parameters. Without this,
     /// writes would silently fall back to the provider's own DateTime format while reads would use
-    /// <see cref="UtcDateTimeTypeHandler"/>, leaving the two directions inconsistent.
+    /// <see cref="UtcDateTimeTypeHandler"/>, leaving the two directions inconsistent. The same applies to
+    /// the enum built-in mapping, which would otherwise store a status as its numeric value.
     /// </remarks>
     private static void RegisterTypeHandlers()
     {
@@ -99,6 +101,9 @@ public sealed class AppDatabase
 
             SqlMapper.RemoveTypeMap(typeof(DateTime));
             SqlMapper.AddTypeHandler(new UtcDateTimeTypeHandler());
+
+            SqlMapper.RemoveTypeMap(typeof(ParcelStatus));
+            SqlMapper.AddTypeHandler(new ParcelStatusTypeHandler());
             _typeHandlersRegistered = true;
         }
     }

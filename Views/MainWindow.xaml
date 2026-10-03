@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:MailIntegrator.Views.Controls"
+        xmlns:models="clr-namespace:MailIntegrator.Models"
         xmlns:vm="clr-namespace:MailIntegrator.ViewModels"
         mc:Ignorable="d"
         Title="Отслеживание посылок и интеграция в 1С — WPF приложение"
@@ -68,8 +69,21 @@
                   SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
                   BeginningEdit="OnParcelsGridBeginningEdit"
                   SelectionChanged="OnParcelsGridSelectionChanged"
+                  PreviewMouseDown="OnParcelsGridPreviewMouseDown"
                   PreviewKeyDown="OnParcelsGridPreviewKeyDown"
                   LostKeyboardFocus="OnParcelsGridLostKeyboardFocus">
+
+            <!--
+                The row item implements INotifyDataErrorInfo, so the template-column content presenters
+                inherit the row error and would draw the default red adorner over plain text cells.
+                Error feedback is limited to the validated editors inside InputTextBoxStyle and
+                InputComboBoxStyle, which carry their own HasError trigger.
+            -->
+            <DataGrid.Resources>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="Validation.ErrorTemplate" Value="{x:Null}" />
+                </Style>
+            </DataGrid.Resources>
 
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow" BasedOn="{StaticResource DataGridRowStyle}">
@@ -154,6 +168,34 @@
                     </DataGridTemplateColumn.CellEditingTemplate>
                 </DataGridTemplateColumn>
 
+                <!-- Provider selection: a dropdown on the draft row, read-only on saved rows. -->
+                <DataGridTemplateColumn Header="Служба" Width="150" IsReadOnly="True" SortMemberPath="TrackingServiceCode">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding TrackingServiceDisplay}"
+                                           Visibility="{Binding IsDraft, Converter={StaticResource InverseBoolToVisibility}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsTrackingServiceMissing}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource ForegroundMutedBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <ComboBox Style="{StaticResource InputComboBoxStyle}"
+                                          ItemsSource="{Binding TrackingServices}"
+                                          SelectedValuePath="Code"
+                                          DisplayMemberPath="DisplayName"
+                                          SelectedValue="{Binding SelectedTrackingServiceCode, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
+                                          Visibility="{Binding IsDraft, Converter={StaticResource BoolToVisibility}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
                 <DataGridTextColumn Header="Дата отправки"
                                     Width="140"
                                     IsReadOnly="True"
@@ -168,7 +210,7 @@
                                     Binding="{Binding ReceivedDatetimeDisplay}"
                                     ElementStyle="{StaticResource GridCellTextStyle}" />
 
-                <!-- Displayed in Moscow time; only the 1C export instant is shown in UTC. -->
+                <!-- Displayed in local time; only the 1C export instant is shown in UTC. -->
                 <DataGridTextColumn Header="Посл. дата проверки"
                                     Width="165"
                                     IsReadOnly="True"
@@ -176,13 +218,13 @@
                                     Binding="{Binding LastCheckedDatetimeDisplay}"
                                     ElementStyle="{StaticResource GridCellTextStyle}" />
 
-                <!-- Carrier status rendered as a coloured badge. -->
-                <DataGridTemplateColumn Header="Посл. статус" Width="150" SortMemberPath="LastStatus">
+                <!-- Generic status rendered as a coloured badge; the triggers match the enum, not strings. -->
+                <DataGridTemplateColumn Header="Посл. статус" Width="150" SortMemberPath="Status">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <Grid>
                                 <TextBlock Style="{StaticResource GridCellMutedTextStyle}"
-                                           Text="{Binding LastStatusDisplay}"
+                                           Text="{Binding StatusLabel}"
                                            Visibility="{Binding HasLastStatus, Converter={StaticResource InverseBoolToVisibility}}" />
                                 <Border HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
@@ -195,17 +237,29 @@
                                             <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
                                             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding LastStatus}" Value="Доставлено">
+                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Delivered}">
                                                     <Setter Property="Background" Value="{StaticResource SuccessSurfaceBrush}" />
                                                     <Setter Property="BorderBrush" Value="{StaticResource SuccessBrush}" />
                                                 </DataTrigger>
-                                                <DataTrigger Binding="{Binding LastStatus}" Value="В пути">
+                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.InTransit}">
                                                     <Setter Property="Background" Value="{StaticResource InfoSurfaceBrush}" />
                                                     <Setter Property="BorderBrush" Value="{StaticResource InfoBrush}" />
                                                 </DataTrigger>
-                                                <DataTrigger Binding="{Binding LastStatus}" Value="Ожидает отправки">
+                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Customs}">
                                                     <Setter Property="Background" Value="{StaticResource WarningSurfaceBrush}" />
                                                     <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.OutForDelivery}">
+                                                    <Setter Property="Background" Value="{StaticResource WarningSurfaceBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Processing}">
+                                                    <Setter Property="Background" Value="{StaticResource WarningSurfaceBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Exception}">
+                                                    <Setter Property="Background" Value="{StaticResource ErrorSurfaceBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{StaticResource ErrorBrush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -216,32 +270,55 @@
                                             <Path.Style>
                                                 <Style TargetType="Path" BasedOn="{StaticResource SmallIconPathStyle}">
                                                     <Setter Property="Data" Value="{StaticResource InTransitGeometry}" />
-                                                    <Setter Property="Stroke" Value="{StaticResource InfoBrush}" />
+                                                    <Setter Property="Stroke" Value="{StaticResource ForegroundMutedBrush}" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding LastStatus}" Value="Доставлено">
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Delivered}">
                                                             <Setter Property="Data" Value="{StaticResource CheckGeometry}" />
                                                             <Setter Property="Stroke" Value="{StaticResource SuccessBrush}" />
                                                         </DataTrigger>
-                                                        <DataTrigger Binding="{Binding LastStatus}" Value="Ожидает отправки">
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.InTransit}">
+                                                            <Setter Property="Stroke" Value="{StaticResource InfoBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Customs}">
                                                             <Setter Property="Data" Value="{StaticResource ClockGeometry}" />
                                                             <Setter Property="Stroke" Value="{StaticResource WarningBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.OutForDelivery}">
+                                                            <Setter Property="Stroke" Value="{StaticResource WarningBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Processing}">
+                                                            <Setter Property="Data" Value="{StaticResource ClockGeometry}" />
+                                                            <Setter Property="Stroke" Value="{StaticResource WarningBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Exception}">
+                                                            <Setter Property="Data" Value="{StaticResource WarningGeometry}" />
+                                                            <Setter Property="Stroke" Value="{StaticResource ErrorBrush}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </Path.Style>
                                         </Path>
-                                        <TextBlock Text="{Binding LastStatus}" FontSize="11.5">
+                                        <TextBlock Text="{Binding StatusLabel}" FontSize="11.5">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding LastStatus}" Value="Доставлено">
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Delivered}">
                                                             <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
                                                         </DataTrigger>
-                                                        <DataTrigger Binding="{Binding LastStatus}" Value="В пути">
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.InTransit}">
                                                             <Setter Property="Foreground" Value="{StaticResource InfoBrush}" />
                                                         </DataTrigger>
-                                                        <DataTrigger Binding="{Binding LastStatus}" Value="Ожидает отправки">
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Customs}">
                                                             <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.OutForDelivery}">
+                                                            <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Processing}">
+                                                            <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Exception}">
+                                                            <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -311,6 +388,28 @@
                                     Binding="{Binding MigratedTo1CDatetimeDisplay}"
                                     ElementStyle="{StaticResource GridCellTextStyle}"
                                     HeaderStyle="{StaticResource UtcColumnHeaderStyle}" />
+
+                <!--
+                    Explicit submit affordance: only the draft row shows the button, saved rows stay
+                    empty. The column is read-only so the first click reaches the button instead of
+                    switching the cell into edit mode.
+                -->
+                <DataGridTemplateColumn Header="Действие" Width="84" IsReadOnly="True" CanUserSort="False" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button x:Name="AddDraftParcelButton"
+                                    Tag="DraftAddButton"
+                                    Style="{StaticResource RowActionButtonStyle}"
+                                    Click="OnAddParcelClick"
+                                    ToolTip="Добавить посылку (Enter)"
+                                    Visibility="{Binding IsDraft, Converter={StaticResource BoolToVisibility}}">
+                                <Path Style="{StaticResource SmallIconPathStyle}"
+                                      Data="{StaticResource AddGeometry}"
+                                      Stroke="White" />
+                            </Button>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
     </Grid>

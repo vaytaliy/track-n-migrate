@@ -11,16 +11,23 @@ public sealed class ParcelService : IParcelService
 {
     private readonly IParcelRepository _repository;
     private readonly IClock _clock;
+    private readonly ITrackingServiceRegistry _trackingServiceRegistry;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ParcelService"/> class.
     /// </summary>
     /// <param name="repository">The parcel store.</param>
     /// <param name="clock">The clock used to stamp creation instants.</param>
-    public ParcelService(IParcelRepository repository, IClock clock)
+    /// <param name="trackingServiceRegistry">Validates the provider chosen for a new parcel.</param>
+    public ParcelService(
+        IParcelRepository repository,
+        IClock clock,
+        ITrackingServiceRegistry trackingServiceRegistry)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _trackingServiceRegistry =
+            trackingServiceRegistry ?? throw new ArgumentNullException(nameof(trackingServiceRegistry));
     }
 
     /// <inheritdoc />
@@ -29,16 +36,19 @@ public sealed class ParcelService : IParcelService
     /// <inheritdoc />
     /// <remarks>
     /// Documented defaults applied here: creation instant is "now", the 1C flag starts as
-    /// <see langword="false"/>, and the sync owned fields start empty.
+    /// <see langword="false"/>, and the sync owned fields start empty. The provider is written once and
+    /// is never modified afterwards.
     /// </remarks>
-    public Parcel CreateParcel(string trackId)
+    public Parcel CreateParcel(string trackId, string trackingServiceCode)
     {
         var normalizedTrackId = NormalizeTrackId(trackId);
         EnsureTrackIdIsUsable(normalizedTrackId, excludingId: null);
+        var normalizedProviderCode = NormalizeProviderCode(trackingServiceCode);
 
         var parcel = new Parcel
         {
             TrackId = normalizedTrackId,
+            TrackingServiceCode = normalizedProviderCode,
             CreatedDatetimeUtc = _clock.UtcNow,
             SentDatetimeUtc = null,
             ReceivedDatetimeUtc = null,
@@ -51,6 +61,28 @@ public sealed class ParcelService : IParcelService
 
         _repository.Insert(parcel);
         return parcel;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// A parcel that already reached <see cref="ParcelStatus.Delivered"/> or
+    /// <see cref="ParcelStatus.Exception"/> is left untouched, which makes a synchronisation pass
+    /// idempotent for finished parcels.
+    /// </remarks>
+    public bool ApplyTrackingResult(long id, TrackingResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var parcel = _repository.GetById(id);
+        if (parcel is null || parcel.LastStatus?.IsFinal() == true)
+        {
+            return false;
+        }
+
+        parcel.LastStatus = result.CurrentStatus;
+        parcel.LastCheckedDatetimeUtc = result.StatusDatetimeUtc;
+
+        return _repository.Update(parcel);
     }
 
     /// <inheritdoc />
@@ -126,5 +158,22 @@ public sealed class ParcelService : IParcelService
         {
             throw new ParcelValidationException($"Tracking number '{trackId}' is already in use.");
         }
+    }
+
+    /// <summary>
+    /// Validates and normalises the provider code chosen for a new parcel.
+    /// </summary>
+    /// <param name="trackingServiceCode">The provider code entered on the draft row.</param>
+    /// <returns>The trimmed provider code.</returns>
+    /// <exception cref="ParcelValidationException">The provider is missing or not registered.</exception>
+    private string NormalizeProviderCode(string trackingServiceCode)
+    {
+        var code = trackingServiceCode?.Trim();
+        if (string.IsNullOrWhiteSpace(code) || !_trackingServiceRegistry.ContainsCode(code))
+        {
+            throw new ParcelValidationException($"Tracking provider '{trackingServiceCode}' is not registered.");
+        }
+
+        return code;
     }
 }

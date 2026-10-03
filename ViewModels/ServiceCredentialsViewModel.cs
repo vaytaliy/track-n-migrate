@@ -31,24 +31,24 @@ public sealed partial class ServiceCredentialsViewModel : ObservableObject
     /// <summary>
     /// Initializes a new instance of the <see cref="ServiceCredentialsViewModel"/> class.
     /// </summary>
-    /// <param name="service">The service these credentials belong to.</param>
+    /// <param name="target">The credential target this editor belongs to.</param>
     /// <param name="secretStore">The vault used to read and write the credential.</param>
-    public ServiceCredentialsViewModel(SecretService service, ISecretStore secretStore)
+    public ServiceCredentialsViewModel(CredentialTarget target, ISecretStore secretStore)
     {
-        Service = service;
+        Target = target ?? throw new ArgumentNullException(nameof(target));
         _secretStore = secretStore ?? throw new ArgumentNullException(nameof(secretStore));
         Reload();
     }
 
     /// <summary>
-    /// Gets the service these credentials belong to.
+    /// Gets the credential target this editor belongs to.
     /// </summary>
-    public SecretService Service { get; }
+    public CredentialTarget Target { get; }
 
     /// <summary>
     /// Gets the human readable service name shown in the dialog.
     /// </summary>
-    public string DisplayName => Service.ToDisplayName();
+    public string DisplayName => Target.DisplayName;
 
     /// <summary>
     /// Gets a value indicating whether the credential is currently stored in the vault.
@@ -60,7 +60,7 @@ public sealed partial class ServiceCredentialsViewModel : ObservableObject
     /// </summary>
     public void Reload()
     {
-        var credential = _secretStore.GetCredential(Service);
+        var credential = _secretStore.GetCredential(Target);
         Login = credential?.Login ?? string.Empty;
         Password = credential?.Password ?? string.Empty;
         IsConfigured = credential is not null;
@@ -78,17 +78,17 @@ public sealed partial class ServiceCredentialsViewModel : ObservableObject
             return false;
         }
 
-        _secretStore.SaveCredential(Service, Login.Trim(), Password);
+        _secretStore.SaveCredential(Target, Login.Trim(), Password);
         IsConfigured = true;
         return true;
     }
 
     /// <summary>
-    /// Removes the stored credential for this service.
+    /// Removes the stored credential for this target.
     /// </summary>
     public void Clear()
     {
-        _secretStore.DeleteCredential(Service);
+        _secretStore.DeleteCredential(Target);
         Login = string.Empty;
         Password = string.Empty;
         IsConfigured = false;
