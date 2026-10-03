@@ -1,0 +1,317 @@
+﻿<Window x:Class="MailIntegrator.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:MailIntegrator.Views.Controls"
+        xmlns:vm="clr-namespace:MailIntegrator.ViewModels"
+        mc:Ignorable="d"
+        Title="Отслеживание посылок и интеграция в 1С — WPF приложение"
+        Height="760"
+        Width="1600"
+        MinHeight="520"
+        MinWidth="1100"
+        Background="{StaticResource CanvasBrush}"
+        FontFamily="{StaticResource UiFontFamily}"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ============================== Toolbar and sync status ============================== -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <Button Command="{Binding RequestStatusesCommand}"
+                        Style="{StaticResource ToolbarButtonStyle}"
+                        ToolTip="Запросить статус посылок в Почте России">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource IconPathStyle}"
+                              Data="{StaticResource RefreshGeometry}"
+                              Stroke="{StaticResource InfoBrush}" />
+                        <TextBlock Text="Запросить статус посылок" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <Button Command="{Binding MigrateTo1CCommand}"
+                        Style="{StaticResource ToolbarButtonStyle}"
+                        Margin="10,0,0,0"
+                        ToolTip="Экспорт посылок в 1С">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource IconPathStyle}"
+                              Data="{StaticResource ExportGeometry}"
+                              Stroke="{StaticResource WarningBrush}" />
+                        <TextBlock Text="Экспорт в 1С" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <Button Command="{Binding OpenSettingsCommand}"
+                        Style="{StaticResource IconOnlyButtonStyle}"
+                        Margin="10,0,0,0"
+                        ToolTip="Настройки доступа к сервисам">
+                    <Path Style="{StaticResource IconPathStyle}"
+                          Data="{StaticResource SettingsGeometry}"
+                          Stroke="{StaticResource ForegroundMutedBrush}" />
+                </Button>
+            </StackPanel>
+
+            <controls:SyncStatusBar DataContext="{Binding Sync}" HorizontalAlignment="Right" />
+        </Grid>
+
+        <!-- ============================== Parcel grid ============================== -->
+        <DataGrid x:Name="ParcelsGrid"
+                  Grid.Row="1"
+                  Style="{StaticResource ParcelDataGridStyle}"
+                  ItemsSource="{Binding Parcels}"
+                  SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                  BeginningEdit="OnParcelsGridBeginningEdit"
+                  SelectionChanged="OnParcelsGridSelectionChanged"
+                  PreviewKeyDown="OnParcelsGridPreviewKeyDown"
+                  LostKeyboardFocus="OnParcelsGridLostKeyboardFocus">
+
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow" BasedOn="{StaticResource DataGridRowStyle}">
+                    <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnRowPreviewMouseRightButtonDown" />
+                </Style>
+            </DataGrid.RowStyle>
+
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Удалить"
+                              Command="{Binding DeleteParcelCommand}"
+                              CommandParameter="{Binding SelectedRow}"
+                              IsEnabled="{Binding SelectedRow.IsEditable}" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
+
+            <DataGrid.Columns>
+                <!-- Row number, replaced by a padlock once the parcel is exported to 1C. -->
+                <DataGridTemplateColumn Header="#" Width="44" CanUserSort="False" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Path Style="{StaticResource SmallIconPathStyle}"
+                                      Data="{StaticResource LockGeometry}"
+                                      Stroke="{StaticResource ForegroundMutedBrush}"
+                                      HorizontalAlignment="Left"
+                                      Visibility="{Binding IsMigratedTo1CFlag, Converter={StaticResource BoolToVisibility}}" />
+                                <TextBlock Style="{StaticResource GridCellMutedTextStyle}"
+                                           Text="{Binding RowNumberDisplay}"
+                                           Visibility="{Binding IsMigratedTo1CFlag, Converter={StaticResource InverseBoolToVisibility}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="Дата создания"
+                                    Width="190"
+                                    IsReadOnly="True"
+                                    SortMemberPath="CreatedDatetimeUtc"
+                                    Binding="{Binding CreatedDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}" />
+
+                <!-- Editable while the parcel has not been exported to 1C. -->
+                <DataGridTemplateColumn Header="Трекинг #" Width="175" SortMemberPath="TrackId">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Path Style="{StaticResource SmallIconPathStyle}"
+                                      Data="{StaticResource LinkGeometry}"
+                                      Stroke="{StaticResource AccentBrush}"
+                                      Visibility="{Binding IsTrackIdPlaceholder, Converter={StaticResource InverseBoolToVisibility}}" />
+                                <TextBlock Text="{Binding TrackIdDisplay}" Margin="6,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMigratedTo1CFlag}" Value="False">
+                                                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsTrackIdPlaceholder}" Value="True">
+                                                    <Setter Property="FontStyle" Value="Italic" />
+                                                    <Setter Property="FontWeight" Value="Normal" />
+                                                    <Setter Property="Foreground" Value="{StaticResource ForegroundMutedBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Path Style="{StaticResource SmallIconPathStyle}"
+                                      Data="{StaticResource PencilGeometry}"
+                                      Stroke="{StaticResource ForegroundMutedBrush}"
+                                      Margin="6,0,0,0"
+                                      Visibility="{Binding IsEditable, Converter={StaticResource BoolToVisibility}}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <TextBox Style="{StaticResource InputTextBoxStyle}"
+                                     Text="{Binding TrackId, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="Дата отправки"
+                                    Width="140"
+                                    IsReadOnly="True"
+                                    SortMemberPath="SentDatetimeUtc"
+                                    Binding="{Binding SentDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}" />
+
+                <DataGridTextColumn Header="Дата получения"
+                                    Width="140"
+                                    IsReadOnly="True"
+                                    SortMemberPath="ReceivedDatetimeUtc"
+                                    Binding="{Binding ReceivedDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}" />
+
+                <!-- Displayed in Moscow time; only the 1C export instant is shown in UTC. -->
+                <DataGridTextColumn Header="Посл. дата проверки"
+                                    Width="165"
+                                    IsReadOnly="True"
+                                    SortMemberPath="LastCheckedDatetimeUtc"
+                                    Binding="{Binding LastCheckedDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}" />
+
+                <!-- Carrier status rendered as a coloured badge. -->
+                <DataGridTemplateColumn Header="Посл. статус" Width="150" SortMemberPath="LastStatus">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Style="{StaticResource GridCellMutedTextStyle}"
+                                           Text="{Binding LastStatusDisplay}"
+                                           Visibility="{Binding HasLastStatus, Converter={StaticResource InverseBoolToVisibility}}" />
+                                <Border HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        CornerRadius="4"
+                                        Padding="8,4"
+                                        BorderThickness="1"
+                                        Visibility="{Binding HasLastStatus, Converter={StaticResource BoolToVisibility}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+                                            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding LastStatus}" Value="Доставлено">
+                                                    <Setter Property="Background" Value="{StaticResource SuccessSurfaceBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{StaticResource SuccessBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding LastStatus}" Value="В пути">
+                                                    <Setter Property="Background" Value="{StaticResource InfoSurfaceBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{StaticResource InfoBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding LastStatus}" Value="Ожидает отправки">
+                                                    <Setter Property="Background" Value="{StaticResource WarningSurfaceBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path VerticalAlignment="Center" Margin="0,0,6,0">
+                                            <Path.Style>
+                                                <Style TargetType="Path" BasedOn="{StaticResource SmallIconPathStyle}">
+                                                    <Setter Property="Data" Value="{StaticResource InTransitGeometry}" />
+                                                    <Setter Property="Stroke" Value="{StaticResource InfoBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding LastStatus}" Value="Доставлено">
+                                                            <Setter Property="Data" Value="{StaticResource CheckGeometry}" />
+                                                            <Setter Property="Stroke" Value="{StaticResource SuccessBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding LastStatus}" Value="Ожидает отправки">
+                                                            <Setter Property="Data" Value="{StaticResource ClockGeometry}" />
+                                                            <Setter Property="Stroke" Value="{StaticResource WarningBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Path.Style>
+                                        </Path>
+                                        <TextBlock Text="{Binding LastStatus}" FontSize="11.5">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding LastStatus}" Value="Доставлено">
+                                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding LastStatus}" Value="В пути">
+                                                            <Setter Property="Foreground" Value="{StaticResource InfoBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding LastStatus}" Value="Ожидает отправки">
+                                                            <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Editable while the parcel has not been exported to 1C. -->
+                <DataGridTemplateColumn Header="Комментарий" Width="*" MinWidth="200" SortMemberPath="Comment">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding CommentDisplay}" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsCommentPlaceholder}" Value="True">
+                                                    <Setter Property="FontStyle" Value="Italic" />
+                                                    <Setter Property="Foreground" Value="{StaticResource ForegroundMutedBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsMigratedTo1CFlag}" Value="True">
+                                                    <Setter Property="FontStyle" Value="Italic" />
+                                                    <Setter Property="Foreground" Value="{StaticResource ForegroundMutedBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="(заблокировано для редактирования)"
+                                           Visibility="{Binding ShowLockedCommentCaption, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource SmallMutedTextStyle}">
+                                            <Setter Property="FontStyle" Value="Italic" />
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <TextBox Style="{StaticResource InputTextBoxStyle}"
+                                     Text="{Binding Comment, UpdateSourceTrigger=PropertyChanged}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Header="1С интеграция" Width="100" SortMemberPath="IsMigratedTo1CFlag">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox Style="{StaticResource DarkCheckBoxStyle}"
+                                      IsChecked="{Binding IsMigratedTo1CFlag, Mode=OneWay}"
+                                      IsHitTestVisible="False" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="Дата интеграции в 1С"
+                                    Width="180"
+                                    IsReadOnly="True"
+                                    SortMemberPath="MigratedTo1CDatetimeUtc"
+                                    Binding="{Binding MigratedTo1CDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}"
+                                    HeaderStyle="{StaticResource UtcColumnHeaderStyle}" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</Window>

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="MailIntegrator.csproj" />
+  <Project Path="../MailIntegrator.Tests/MailIntegrator.Tests.csproj" />
+</Solution>

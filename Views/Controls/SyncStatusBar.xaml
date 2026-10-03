@@ -1,0 +1,142 @@
+﻿<UserControl x:Class="MailIntegrator.Views.Controls.SyncStatusBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="clr-namespace:MailIntegrator.Models"
+             mc:Ignorable="d"
+             d:DesignHeight="70"
+             d:DesignWidth="420">
+
+    <!--
+        Sync status strip: animated symbol, message, state badge and an indeterminate progress line.
+        The DataContext is a SyncStatusViewModel supplied by the main window.
+    -->
+    <Border Visibility="{Binding HasMessage, Converter={StaticResource BoolToVisibility}}">
+        <Border.Style>
+            <Style TargetType="Border" BasedOn="{StaticResource StatusCardStyle}">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.InProgress}">
+                        <Setter Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.Succeeded}">
+                        <Setter Property="BorderBrush" Value="{StaticResource SuccessBrush}" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.Failed}">
+                        <Setter Property="BorderBrush" Value="{StaticResource ErrorBrush}" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Symbol: spinner while running, warning on failure, checkmark on success. -->
+            <Grid Grid.Row="0" Grid.Column="0" Width="20" Height="20" Margin="0,0,12,0">
+                <Ellipse x:Name="Spinner"
+                         Width="16"
+                         Height="16"
+                         Stroke="{StaticResource WarningBrush}"
+                         StrokeThickness="2"
+                         StrokeDashArray="0.1 3.2"
+                         StrokeDashCap="Round"
+                         RenderTransformOrigin="0.5,0.5"
+                         Visibility="{Binding IsSpinnerVisible, Converter={StaticResource BoolToVisibility}}">
+                    <Ellipse.RenderTransform>
+                        <RotateTransform Angle="0" />
+                    </Ellipse.RenderTransform>
+                    <Ellipse.Triggers>
+                        <EventTrigger RoutedEvent="Loaded">
+                            <BeginStoryboard>
+                                <Storyboard RepeatBehavior="Forever">
+                                    <DoubleAnimation Storyboard.TargetName="Spinner"
+                                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                     From="0"
+                                                     To="360"
+                                                     Duration="0:0:1" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </Ellipse.Triggers>
+                </Ellipse>
+
+                <Path Data="{StaticResource WarningGeometry}"
+                      Stroke="{StaticResource ErrorBrush}"
+                      StrokeThickness="1.6"
+                      Stretch="Uniform"
+                      Width="18"
+                      Height="18"
+                      Visibility="{Binding IsWarningVisible, Converter={StaticResource BoolToVisibility}}" />
+
+                <Path Data="{StaticResource CheckGeometry}"
+                      Stroke="{StaticResource SuccessBrush}"
+                      StrokeThickness="2.2"
+                      Stretch="Uniform"
+                      Width="18"
+                      Height="18"
+                      Visibility="{Binding IsSuccessVisible, Converter={StaticResource BoolToVisibility}}" />
+            </Grid>
+
+            <TextBlock Grid.Row="0"
+                       Grid.Column="1"
+                       VerticalAlignment="Center"
+                       Style="{StaticResource BaseTextStyle}"
+                       Text="{Binding Message}"
+                       ToolTip="{Binding SymbolTooltip}" />
+
+            <Border Grid.Row="0" Grid.Column="2">
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource StatusBadgeStyle}">
+                        <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.InProgress}">
+                                <Setter Property="Background" Value="{StaticResource WarningSurfaceBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.Succeeded}">
+                                <Setter Property="Background" Value="{StaticResource SuccessSurfaceBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.Failed}">
+                                <Setter Property="Background" Value="{StaticResource ErrorSurfaceBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+
+                <TextBlock Text="{Binding BadgeText}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource StatusBadgeTextStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.InProgress}">
+                                    <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.Succeeded}">
+                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="{x:Static models:SyncState.Failed}">
+                                    <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Border>
+
+            <ProgressBar Grid.Row="1"
+                         Grid.Column="0"
+                         Grid.ColumnSpan="3"
+                         Margin="0,10,0,0"
+                         Style="{StaticResource SyncProgressBarStyle}"
+                         IsIndeterminate="True"
+                         Visibility="{Binding IsProgressVisible, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
+    </Border>
+</UserControl>

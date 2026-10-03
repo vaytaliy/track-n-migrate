@@ -1,0 +1,112 @@
+﻿<Window x:Class="MailIntegrator.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Настройки доступа к сервисам"
+        Width="560"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        Background="{StaticResource CanvasBrush}"
+        FontFamily="{StaticResource UiFontFamily}"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <StackPanel Margin="20">
+        <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Учётные данные сервисов" />
+        <TextBlock Style="{StaticResource SmallMutedTextStyle}"
+                   Margin="0,4,0,16"
+                   TextWrapping="Wrap"
+                   Text="Логин и пароль для basic auth хранятся в Windows Credential Manager под текущей учётной записью Windows. В базе данных приложения пароли не сохраняются." />
+
+        <ItemsControl ItemsSource="{Binding Services}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource ControlCornerRadius}"
+                            Padding="16"
+                            Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Grid.ColumnSpan="2"
+                                       Style="{StaticResource BaseTextStyle}"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding DisplayName}" />
+
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="0"
+                                       Margin="0,12,0,0"
+                                       VerticalAlignment="Center"
+                                       Style="{StaticResource MutedTextStyle}"
+                                       Text="Логин" />
+                            <TextBox Grid.Row="1"
+                                     Grid.Column="1"
+                                     Margin="0,12,0,0"
+                                     Style="{StaticResource InputTextBoxStyle}"
+                                     Text="{Binding Login, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="0"
+                                       Margin="0,10,0,0"
+                                       VerticalAlignment="Center"
+                                       Style="{StaticResource MutedTextStyle}"
+                                       Text="Пароль" />
+                            <PasswordBox Grid.Row="2"
+                                         Grid.Column="1"
+                                         Margin="0,10,0,0"
+                                         Style="{StaticResource InputPasswordBoxStyle}"
+                                         Tag="{Binding}"
+                                         Loaded="OnPasswordBoxLoaded"
+                                         PasswordChanged="OnPasswordBoxPasswordChanged" />
+
+                            <StackPanel Grid.Row="3"
+                                        Grid.Column="1"
+                                        Margin="0,12,0,0"
+                                        Orientation="Horizontal">
+                                <TextBlock VerticalAlignment="Center"
+                                           Style="{StaticResource SmallMutedTextStyle}"
+                                           Text="{Binding ConfiguredCaption}" />
+                                <Button Content="Очистить"
+                                        Margin="12,0,0,0"
+                                        Padding="10,4"
+                                        Style="{StaticResource SubtleButtonStyle}"
+                                        Command="{Binding DataContext.ClearServiceCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Style="{StaticResource SmallMutedTextStyle}"
+                   Margin="0,4,0,0"
+                   TextWrapping="Wrap"
+                   Text="{Binding StatusMessage}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Отмена"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    Command="{Binding CloseCommand}" />
+            <Button Content="Сохранить"
+                    Margin="10,0,0,0"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Command="{Binding SaveCommand}" />
+        </StackPanel>
+    </StackPanel>
+</Window>
