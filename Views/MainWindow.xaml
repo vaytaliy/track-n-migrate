@@ -93,6 +93,11 @@
 
             <DataGrid.ContextMenu>
                 <ContextMenu>
+                    <MenuItem Header="Проверить статус"
+                              Command="{Binding CheckParcelStatusCommand}"
+                              CommandParameter="{Binding SelectedRow}"
+                              IsEnabled="{Binding SelectedRow.CanCheckStatus}" />
+                    <Separator />
                     <MenuItem Header="Удалить"
                               Command="{Binding DeleteParcelCommand}"
                               CommandParameter="{Binding SelectedRow}"

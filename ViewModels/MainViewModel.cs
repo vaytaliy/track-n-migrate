@@ -158,7 +158,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <param name="cancellationToken">Cancels the pass.</param>
     [RelayCommand]
     private Task RequestStatusesAsync(CancellationToken cancellationToken) =>
-        RunPassAsync(_trackingSyncService.RunAsync, reloadParcelsOnSuccess: true, cancellationToken);
+        RunPassAsync(_trackingSyncService.RunAsync, ReloadParcels, cancellationToken);
 
     /// <summary>
     /// Runs a migration pass for the "Экспорт в 1С" action.
@@ -166,7 +166,34 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <param name="cancellationToken">Cancels the pass.</param>
     [RelayCommand]
     private Task MigrateTo1CAsync(CancellationToken cancellationToken) =>
-        RunPassAsync(_migrationSyncService.RunAsync, reloadParcelsOnSuccess: false, cancellationToken);
+        RunPassAsync(_migrationSyncService.RunAsync, onSuccess: null, cancellationToken);
+
+    /// <summary>
+    /// Polls the single parcel behind a grid row and refreshes only that row.
+    /// </summary>
+    /// <param name="row">The row the operator selected in the context menu.</param>
+    [RelayCommand]
+    private Task CheckParcelStatusAsync(ParcelRowViewModel? row)
+    {
+        if (row is null || row.IsDraft)
+        {
+            return Task.CompletedTask;
+        }
+
+        return RunPassAsync(
+            async cancellationToken =>
+            {
+                var result = await _trackingSyncService.RunForParcelAsync(row.Id, cancellationToken);
+                if (result is not null)
+                {
+                    // The row wraps its own parcel instance, so it is updated in place: the grid keeps its
+                    // selection and does not need the full reload the bulk pass performs.
+                    row.ApplyTrackingResult(result);
+                }
+            },
+            onSuccess: null,
+            CancellationToken.None);
+    }
 
     /// <summary>
     /// Removes a parcel that has not been exported to 1C, after confirmation.
@@ -293,11 +320,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// Drives the status strip through one synchronisation pass.
     /// </summary>
     /// <param name="pass">The pass to execute.</param>
-    /// <param name="reloadParcelsOnSuccess">Whether a successful pass changed parcel data and needs a reload.</param>
+    /// <param name="onSuccess">
+    /// An optional action that reflects a successful pass in the grid: a full reload for the bulk tracking
+    /// pass, or <see langword="null"/> when the pass already updated the affected rows itself.
+    /// </param>
     /// <param name="cancellationToken">Cancels the pass.</param>
     private async Task RunPassAsync(
         Func<CancellationToken, Task> pass,
-        bool reloadParcelsOnSuccess,
+        Action? onSuccess,
         CancellationToken cancellationToken)
     {
         Sync.LastErrorMessage = null;
@@ -307,11 +337,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             await pass(cancellationToken);
             Sync.State = SyncState.Succeeded;
-
-            if (reloadParcelsOnSuccess)
-            {
-                ReloadParcels();
-            }
+            onSuccess?.Invoke();
         }
         catch (OperationCanceledException)
         {

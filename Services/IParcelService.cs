@@ -14,6 +14,13 @@ public interface IParcelService
     IReadOnlyList<Parcel> GetAllParcels();
 
     /// <summary>
+    /// Returns one stored parcel, or <see langword="null"/> when it does not exist.
+    /// </summary>
+    /// <param name="id">The identifier of the parcel to load.</param>
+    /// <returns>The stored parcel.</returns>
+    Parcel? GetParcel(long id);
+
+    /// <summary>
     /// Creates a parcel from a user supplied tracking number and provider, applying the documented defaults.
     /// </summary>
     /// <param name="trackId">The tracking number entered by the operator.</param>

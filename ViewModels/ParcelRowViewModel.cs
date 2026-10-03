@@ -244,6 +244,16 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     public bool HasLastStatus => _parcel.LastStatus is not null;
 
     /// <summary>
+    /// Gets a value indicating whether the operator can request an individual status check for this row.
+    /// The draft row has nothing to poll, a row without a provider cannot be routed, and a final status
+    /// would not change any more, so all three are hidden.
+    /// </summary>
+    public bool CanCheckStatus =>
+        !IsDraft
+        && !string.IsNullOrWhiteSpace(_parcel.TrackingServiceCode)
+        && _parcel.LastStatus?.IsFinal() != true;
+
+    /// <summary>
     /// Gets the row number shown in the leading column, or an asterisk for the draft row.
     /// </summary>
     public string RowNumberDisplay =>
@@ -396,6 +406,25 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
         Comment = comment ?? string.Empty;
         _parcel.TrackId = trackId;
         _parcel.Comment = comment;
+    }
+
+    /// <summary>
+    /// Applies a freshly polled tracking result to this row so the grid reflects it without a full reload.
+    /// </summary>
+    /// <param name="result">The result the provider returned for this parcel.</param>
+    public void ApplyTrackingResult(TrackingResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        _parcel.LastStatus = result.CurrentStatus;
+        _parcel.LastCheckedDatetimeUtc = result.StatusDatetimeUtc;
+
+        OnPropertyChanged(nameof(Status));
+        OnPropertyChanged(nameof(StatusLabel));
+        OnPropertyChanged(nameof(HasLastStatus));
+        OnPropertyChanged(nameof(CanCheckStatus));
+        OnPropertyChanged(nameof(LastCheckedDatetimeUtc));
+        OnPropertyChanged(nameof(LastCheckedDatetimeDisplay));
     }
 
     /// <summary>

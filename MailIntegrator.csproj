@@ -19,6 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- User editable provider status mapping, deployed next to the executable. -->
+    <None Update="appConfig.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Dapper" Version="2.1.89" />
     <PackageReference Include="Meziantou.Framework.Win32.CredentialManager" Version="3.0.4" />

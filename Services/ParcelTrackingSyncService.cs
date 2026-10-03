@@ -57,10 +57,44 @@ public sealed class ParcelTrackingSyncService : ITrackingSyncService
 
             foreach (var parcel in group)
             {
-                var result = await service.TrackParcelAsync(parcel.TrackId, cancellationToken);
-                _parcelService.ApplyTrackingResult(parcel.Id, result);
+                await TrackAndApplyAsync(service, parcel, cancellationToken);
             }
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<TrackingResult?> RunForParcelAsync(long parcelId, CancellationToken cancellationToken)
+    {
+        var parcel = _parcelService.GetParcel(parcelId);
+        if (parcel is null
+            || string.IsNullOrWhiteSpace(parcel.TrackingServiceCode)
+            || parcel.LastStatus?.IsFinal() == true)
+        {
+            return null;
+        }
+
+        var service = _trackingServiceRegistry.FindByCode(parcel.TrackingServiceCode)
+            ?? throw new SyncException(
+                $"Служба «{parcel.TrackingServiceCode}» не зарегистрирована для посылки {parcel.TrackId}.");
+
+        await AuthenticateAsync(service, cancellationToken);
+        return await TrackAndApplyAsync(service, parcel, cancellationToken);
+    }
+
+    /// <summary>
+    /// Polls one parcel with an already authenticated provider and persists the reported status.
+    /// </summary>
+    /// <param name="service">The authenticated provider that owns the parcel.</param>
+    /// <param name="parcel">The parcel to poll.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The applied result, or <see langword="null"/> when the parcel is already final.</returns>
+    private async Task<TrackingResult?> TrackAndApplyAsync(
+        ITrackingService service,
+        Parcel parcel,
+        CancellationToken cancellationToken)
+    {
+        var result = await service.TrackParcelAsync(parcel.TrackId, cancellationToken);
+        return _parcelService.ApplyTrackingResult(parcel.Id, result) ? result : null;
     }
 
     /// <summary>

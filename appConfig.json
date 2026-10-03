@@ -1,0 +1,14 @@
+{
+  "statusMappings": {
+    "PochtaRussia": {
+      "Прием": "Processing",
+      "Передано курьеру": "OutForDelivery",
+      "Неудачная попытка вручения": "Exception",
+      "Вручение": "Delivered",
+      "Возврат": "Delivered",
+      "Вручение отправителю": "Delivered"
+    },
+    "DHL": {},
+    "DPD": {}
+  }
+}

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using MailIntegrator.Configuration;
 using MailIntegrator.Data;
 using MailIntegrator.Infrastructure;
 using MailIntegrator.Services;
@@ -28,8 +29,11 @@ public partial class App : Application
         _database = new AppDatabase(AppPaths.DatabaseFile);
         _database.Initialize();
 
+        var appConfigStore = new AppConfigStore(AppPaths.AppConfigFile);
+        var statusMappings = new StatusMappingCatalog(appConfigStore.Load());
+
         var parcelRepository = new ParcelRepository(_database);
-        var trackingServiceRegistry = new TrackingServiceRegistry(DummyTrackingServices.CreateAll());
+        var trackingServiceRegistry = new TrackingServiceRegistry(DummyTrackingServices.CreateAll(statusMappings));
         var parcelService = new ParcelService(parcelRepository, clock, trackingServiceRegistry);
         var secretStore = new CredentialManagerSecretStore();
         var trackingSyncService = new ParcelTrackingSyncService(parcelService, trackingServiceRegistry, secretStore);

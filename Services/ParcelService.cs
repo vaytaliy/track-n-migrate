@@ -34,6 +34,9 @@ public sealed class ParcelService : IParcelService
     public IReadOnlyList<Parcel> GetAllParcels() => _repository.GetAll();
 
     /// <inheritdoc />
+    public Parcel? GetParcel(long id) => _repository.GetById(id);
+
+    /// <inheritdoc />
     /// <remarks>
     /// Documented defaults applied here: creation instant is "now", the 1C flag starts as
     /// <see langword="false"/>, and the sync owned fields start empty. The provider is written once and

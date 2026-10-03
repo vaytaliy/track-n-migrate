@@ -19,4 +19,10 @@ public static class AppPaths
     /// Gets the full path of the SQLite database file used for parcels and non-secret settings.
     /// </summary>
     public static string DatabaseFile => Path.Combine(DataDirectory, "mailintegrator.db");
+
+    /// <summary>
+    /// Gets the full path of the editable configuration file that carries, among other settings, the
+    /// provider status mappings. It is deployed next to the executable so an operator can edit it in place.
+    /// </summary>
+    public static string AppConfigFile => Path.Combine(AppContext.BaseDirectory, "appConfig.json");
 }
