@@ -1,7 +1,7 @@
 using MailIntegrator.Models;
 using MailIntegrator.ViewModels;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.ViewModels;
 
 /// <summary>
 /// Covers the status strip state mapping.

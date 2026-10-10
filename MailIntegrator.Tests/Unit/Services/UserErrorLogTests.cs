@@ -1,6 +1,6 @@
 using MailIntegrator.Services;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Services;
 
 /// <summary>
 /// Covers the shared, observable failure list the footer binds to.

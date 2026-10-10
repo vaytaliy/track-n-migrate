@@ -2,7 +2,7 @@ using MailIntegrator.Configuration;
 using MailIntegrator.Models;
 using MailIntegrator.Services;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Services.Tracking;
 
 /// <summary>
 /// Covers the scripted Почта России provider: handshake, token guard, request shape, payload parsing and

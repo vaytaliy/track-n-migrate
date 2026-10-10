@@ -1,6 +1,6 @@
 using MailIntegrator.Models;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Domain;
 
 /// <summary>
 /// Covers the single mapping between <see cref="ParcelStatus"/> and its presentation label.

@@ -2,7 +2,7 @@ using System.IO;
 using MailIntegrator.Configuration;
 using MailIntegrator.Models;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Algorithms;
 
 /// <summary>
 /// Covers the configuration driven provider status mapping.

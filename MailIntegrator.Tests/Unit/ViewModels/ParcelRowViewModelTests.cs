@@ -3,7 +3,7 @@ using MailIntegrator.Services;
 using MailIntegrator.Tests.TestSupport;
 using MailIntegrator.ViewModels;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.ViewModels;
 
 /// <summary>
 /// Covers the per-row display and validation behaviour.

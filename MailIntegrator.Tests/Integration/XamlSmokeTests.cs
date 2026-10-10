@@ -17,7 +17,7 @@ using MailIntegrator.ViewModels;
 using MailIntegrator.Views;
 using MailIntegrator.Views.Controls;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Integration;
 
 /// <summary>
 /// Loads the real XAML off-screen. This is the only test that can catch missing resource keys, broken

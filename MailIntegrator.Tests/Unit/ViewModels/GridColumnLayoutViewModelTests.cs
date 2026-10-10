@@ -1,7 +1,7 @@
 using MailIntegrator.Tests.TestSupport;
 using MailIntegrator.ViewModels;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.ViewModels;
 
 /// <summary>
 /// Covers the columns popover state: defaults, stored preferences, locked key columns and reset.

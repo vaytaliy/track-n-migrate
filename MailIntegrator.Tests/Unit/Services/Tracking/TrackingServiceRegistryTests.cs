@@ -1,7 +1,7 @@
 using MailIntegrator.Services;
 using MailIntegrator.Tests.TestSupport;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Services.Tracking;
 
 /// <summary>
 /// Covers provider registration, lookup and misconfiguration handling.

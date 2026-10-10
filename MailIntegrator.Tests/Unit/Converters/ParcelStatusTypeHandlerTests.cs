@@ -3,7 +3,7 @@ using MailIntegrator.Data;
 using MailIntegrator.Models;
 using Microsoft.Data.Sqlite;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Converters;
 
 /// <summary>
 /// Covers the enum to storage conversion, including the graceful handling of unmapped values.

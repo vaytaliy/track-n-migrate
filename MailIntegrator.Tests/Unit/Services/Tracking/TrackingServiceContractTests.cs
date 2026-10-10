@@ -1,7 +1,7 @@
 using MailIntegrator.Configuration;
 using MailIntegrator.Services;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Services.Tracking;
 
 /// <summary>
 /// Covers the optional tracking-page part of the <see cref="ITrackingService"/> contract: a provider either

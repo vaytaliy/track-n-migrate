@@ -1,6 +1,6 @@
 using MailIntegrator.Data;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Converters;
 
 /// <summary>
 /// Covers the on-disk representation of instants.

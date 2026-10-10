@@ -3,7 +3,7 @@ using MailIntegrator.Data;
 using MailIntegrator.Models;
 using MailIntegrator.Tests.TestSupport;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Integration;
 
 /// <summary>
 /// Exercises the parcel repository against a real SQLite database.
