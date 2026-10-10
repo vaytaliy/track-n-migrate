@@ -2,6 +2,7 @@
 2. Document functions that you create
 3. Name variables reasonable names, so that logic could be followed along
 4. Keep separate classes in their separate files
+5. Use a `tmp/` folder in the project root (`./tmp/`) as the scratch directory for temporary files, downloads, and tool output; never the WSL system `/tmp`.
 
 
 
@@ -48,6 +49,7 @@ Make sure you follow the set development steps:
 1. Treat the bash tool as **Linux/WSL**, not Windows. Its cwd is already `/mnt/d/projects/mail_integrator`; prefer relative paths so no external path is involved.
 2. Never use `C:/...`, `C:\...`, or `/c/...` inside the bash tool - they will not resolve. Only `/mnt/c/...` works in WSL.
 3. For project files use the built-in `read`/`edit`/`write`/`ls`/`find`/`grep` tools with Windows paths (`D:\projects\mail_integrator\...`); pi translates them correctly and keeps them inside cwd.
-4. If a bash command genuinely needs `/mnt/...`, expect an `external_directory` prompt. That prompt is this flavor mismatch, not a real out-of-project access. Do not "work around" it by exploring `/mnt`; use the built-in tools or ask the user.
-5. This is an environment-level defect in `@gotgenes/pi-permission-system` (win32 flavor + WSL bash), not a repo bug. Real fixes live outside the code: install Git for Windows / set `shellPath` to Git Bash so pi's assumed MSYS mounts match, or add an explicit project allow rule such as `"external_directory": { "/mnt/d/projects/mail_integrator/**": "allow" }`.
+4. Use the project-root scratch dir `./tmp/` (git-ignored) for temporary files, downloads, and tool output, and set `TMPDIR=./tmp` for tools that honor it. Do not use the WSL system `/tmp`: it is outside the project (so it trips the `external_directory` gate) and is wiped when WSL restarts.
+5. If a bash command genuinely needs `/mnt/...`, expect an `external_directory` prompt. That prompt is this flavor mismatch, not a real out-of-project access. Do not "work around" it by exploring `/mnt`; use the built-in tools or ask the user.
+6. This is an environment-level defect in `@gotgenes/pi-permission-system` (win32 flavor + WSL bash), not a repo bug. Real fixes live outside the code: install Git for Windows / set `shellPath` to Git Bash so pi's assumed MSYS mounts match, or add an explicit project allow rule such as `"external_directory": { "/mnt/d/projects/mail_integrator/**": "allow" }`.
 
