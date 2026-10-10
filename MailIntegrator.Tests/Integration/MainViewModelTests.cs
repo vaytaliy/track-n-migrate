@@ -5,7 +5,7 @@ using MailIntegrator.Services;
 using MailIntegrator.Tests.TestSupport;
 using MailIntegrator.ViewModels;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Integration;
 
 /// <summary>
 /// Covers the main window behaviour: grid loading, the draft row lifecycle, deletion and the sync flow.

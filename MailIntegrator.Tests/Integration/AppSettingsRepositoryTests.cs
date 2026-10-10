@@ -1,7 +1,7 @@
 using MailIntegrator.Data;
 using MailIntegrator.Tests.TestSupport;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Integration;
 
 /// <summary>
 /// Covers the non-secret settings store.

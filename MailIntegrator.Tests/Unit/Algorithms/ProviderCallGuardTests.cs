@@ -1,7 +1,7 @@
 using System.Net.Http;
 using MailIntegrator.Services;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Algorithms;
 
 /// <summary>
 /// Covers the reuse seam of the error handling: a failed provider call becomes one reported error and never

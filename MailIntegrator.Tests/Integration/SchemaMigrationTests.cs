@@ -4,7 +4,7 @@ using MailIntegrator.Data;
 using MailIntegrator.Tests.TestSupport;
 using Microsoft.Data.Sqlite;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Integration;
 
 /// <summary>
 /// Covers the versioned schema migrations, in particular the legacy status conversion of migration

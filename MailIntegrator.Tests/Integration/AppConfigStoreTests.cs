@@ -1,7 +1,7 @@
 using System.IO;
 using MailIntegrator.Configuration;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Integration;
 
 /// <summary>
 /// Covers loading, seeding and round-tripping of <c>appConfig.json</c>.

@@ -3,7 +3,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using MailIntegrator.Services;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Unit.Algorithms;
 
 /// <summary>
 /// Covers the single mapping from a failed provider call to the short Russian reason shown in the footer.

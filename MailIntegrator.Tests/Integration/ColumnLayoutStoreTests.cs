@@ -2,7 +2,7 @@ using MailIntegrator.Data;
 using MailIntegrator.Services;
 using MailIntegrator.Tests.TestSupport;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Integration;
 
 /// <summary>
 /// Covers the comma-separated persistence of the visible-column set.

@@ -3,7 +3,7 @@ using MailIntegrator.Models;
 using MailIntegrator.Services;
 using MailIntegrator.Tests.TestSupport;
 
-namespace MailIntegrator.Tests;
+namespace MailIntegrator.Tests.Integration;
 
 /// <summary>
 /// Covers the parcel business rules.
