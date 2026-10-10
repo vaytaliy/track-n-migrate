@@ -6,7 +6,8 @@ namespace MailIntegrator.Models;
 /// <remarks>
 /// Every <see cref="DateTime"/> property is persisted in UTC; the row view model converts to the
 /// workstation's local time for display. <see cref="TrackingServiceCode"/> is written once at creation
-/// and is never modified afterwards.
+/// and is never modified afterwards. <see cref="Id"/> is the surrogate key; <see cref="PaymentNumber"/> is
+/// the business key used by the grid and by the 1C migration.
 /// </remarks>
 public sealed class Parcel
 {
@@ -16,7 +17,14 @@ public sealed class Parcel
     public long Id { get; set; }
 
     /// <summary>
-    /// Gets or sets the carrier tracking number. Required and unique (case-insensitive).
+    /// Gets or sets the payment number: the business key of the parcel. It is required, unique
+    /// (case-insensitive) and identifies the record in the 1C target system.
+    /// </summary>
+    public string PaymentNumber { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the carrier tracking number. Required, but deliberately not unique: several parcels
+    /// may share one tracking number and are then polled and updated together.
     /// </summary>
     public string TrackId { get; set; } = string.Empty;
 

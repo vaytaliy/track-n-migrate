@@ -27,6 +27,9 @@ public sealed class PochtaRussiaTrackingService : ITrackingService
     /// <summary>The human readable provider name shown in the grid and the settings dialog.</summary>
     public const string DisplayName = "Почта России";
 
+    /// <summary>The root of the provider's public tracking page.</summary>
+    public const string PublicTrackingUrl = "https://www.pochta.ru/tracking";
+
     private readonly PochtaRussiaMockEndpoint _endpoint;
     private readonly StatusMappingCatalog _statusMappings;
 
@@ -87,10 +90,25 @@ public sealed class PochtaRussiaTrackingService : ITrackingService
         var responseBody = await _endpoint.GetTraceAsync(CurrentAccessToken, trackId, cancellationToken);
         var response = PochtaRussiaTraceResponse.Parse(responseBody);
         var latestEntry = response.FindLatestEntry()
-            ?? throw new SyncException($"Служба «Почта России» не вернула историю операций для {trackId}.");
+            ?? throw new SyncException("не вернула историю операций");
 
         var status = _statusMappings.MapStatus(Code, latestEntry.OperationType);
 
         return new TrackingResult(trackId, status, latestEntry.OperationDateUtc);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The tracking number is placed in the URL fragment, which is how the public page accepts it, so the
+    /// operator lands on the provider's own page with the number already filled in.
+    /// </remarks>
+    public Uri? GetTrackingUrl(string trackId)
+    {
+        if (string.IsNullOrWhiteSpace(trackId))
+        {
+            return null;
+        }
+
+        return new Uri($"{PublicTrackingUrl}#{Uri.EscapeDataString(trackId)}");
     }
 }

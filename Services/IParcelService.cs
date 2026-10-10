@@ -21,18 +21,21 @@ public interface IParcelService
     Parcel? GetParcel(long id);
 
     /// <summary>
-    /// Creates a parcel from a user supplied tracking number and provider, applying the documented defaults.
+    /// Creates a parcel from a user supplied payment number, tracking number and provider, applying the
+    /// documented defaults.
     /// </summary>
-    /// <param name="trackId">The tracking number entered by the operator.</param>
+    /// <param name="paymentNumber">The business key entered by the operator; required and unique.</param>
+    /// <param name="trackId">The tracking number entered by the operator; required, may repeat.</param>
     /// <param name="trackingServiceCode">The code of a registered tracking provider.</param>
     /// <returns>The persisted parcel, including its generated identifier.</returns>
     /// <exception cref="ParcelValidationException">
-    /// The tracking number is missing, malformed or duplicated, or the provider code is unknown.
+    /// The payment number is missing or duplicated, the tracking number is missing, or the provider code
+    /// is unknown.
     /// </exception>
-    Parcel CreateParcel(string trackId, string trackingServiceCode);
+    Parcel CreateParcel(string paymentNumber, string trackId, string trackingServiceCode);
 
     /// <summary>
-    /// Applies a tracking result to a parcel that has not reached a final status.
+    /// Applies a tracking result to a single parcel that has not reached a final status.
     /// </summary>
     /// <param name="id">The identifier of the parcel to update.</param>
     /// <param name="result">The adapted provider answer.</param>
@@ -43,14 +46,25 @@ public interface IParcelService
     bool ApplyTrackingResult(long id, TrackingResult result);
 
     /// <summary>
+    /// Applies one poll result to every parcel registered under the same provider and tracking number, so
+    /// duplicated tracking numbers cannot drift apart.
+    /// </summary>
+    /// <param name="trackingServiceCode">The provider that was polled.</param>
+    /// <param name="trackId">The tracking number that was polled.</param>
+    /// <param name="result">The adapted provider answer.</param>
+    /// <returns>The number of parcels that were actually updated; final parcels are skipped.</returns>
+    int ApplyTrackingResultToTrackId(string trackingServiceCode, string trackId, TrackingResult result);
+
+    /// <summary>
     /// Updates the fields an operator is allowed to change on a parcel that has not been exported to 1C.
     /// </summary>
     /// <param name="id">The identifier of the parcel to update.</param>
-    /// <param name="trackId">The new tracking number.</param>
+    /// <param name="paymentNumber">The new payment number; required and unique.</param>
+    /// <param name="trackId">The new tracking number; required, may repeat.</param>
     /// <param name="comment">The new comment, or <see langword="null"/> to clear it.</param>
     /// <returns>The updated parcel.</returns>
-    /// <exception cref="ParcelValidationException">The parcel is missing, locked, or the tracking number is invalid.</exception>
-    Parcel UpdateEditableFields(long id, string trackId, string? comment);
+    /// <exception cref="ParcelValidationException">The parcel is missing, locked, or a field is invalid.</exception>
+    Parcel UpdateEditableFields(long id, string paymentNumber, string trackId, string? comment);
 
     /// <summary>
     /// Permanently removes a parcel that has not been exported to 1C.
@@ -61,10 +75,10 @@ public interface IParcelService
     bool DeleteParcel(long id);
 
     /// <summary>
-    /// Reports whether a tracking number can be used without colliding with an existing parcel.
+    /// Reports whether a payment number can be used without colliding with an existing parcel.
     /// </summary>
-    /// <param name="trackId">The candidate tracking number.</param>
+    /// <param name="paymentNumber">The candidate payment number.</param>
     /// <param name="excludingId">An optional parcel to ignore, used when re-validating an existing row.</param>
-    /// <returns><see langword="true"/> when the tracking number is free to use.</returns>
-    bool IsTrackIdAvailable(string trackId, long? excludingId = null);
+    /// <returns><see langword="true"/> when the payment number is free to use.</returns>
+    bool IsPaymentNumberAvailable(string paymentNumber, long? excludingId = null);
 }

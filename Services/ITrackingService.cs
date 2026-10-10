@@ -15,6 +15,12 @@ namespace MailIntegrator.Services;
 /// <see cref="TrackParcelAsync"/> then uses the current token. The orchestrator authenticates at most
 /// once per synchronisation run and per provider.
 /// </para>
+/// <para>
+/// Exception handling is deliberately not part of this contract. A failed call may let its exception bubble
+/// up and the orchestrator explains it to the operator with the shared default wording, or it may throw
+/// <see cref="SyncException"/> with its own concise Russian reason when it can be more precise. Either way
+/// the failure is collected by the orchestrator; an implementation never writes error text or logging code.
+/// </para>
 /// </remarks>
 public interface ITrackingService
 {
@@ -41,4 +47,15 @@ public interface ITrackingService
     /// <returns>The adapted tracking result.</returns>
     /// <exception cref="Exception">The provider request failed.</exception>
     Task<TrackingResult> TrackParcelAsync(string trackId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Builds the public web page of a tracking number, so the operator can open the provider's own page.
+    /// </summary>
+    /// <param name="trackId">The tracking number to look up.</param>
+    /// <returns>
+    /// The absolute URL of the provider's tracking page, or <see langword="null"/> when the provider has no
+    /// public page. The default implementation returns <see langword="null"/>, so a provider that does not
+    /// implement this method simply gets no link in the grid.
+    /// </returns>
+    Uri? GetTrackingUrl(string trackId) => null;
 }

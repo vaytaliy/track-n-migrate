@@ -42,10 +42,18 @@ public interface IParcelRepository
     bool Delete(long id);
 
     /// <summary>
-    /// Checks whether a tracking number is already in use.
+    /// Finds every parcel registered under one provider and tracking number.
     /// </summary>
-    /// <param name="trackId">The tracking number to look for; compared case-insensitively.</param>
+    /// <param name="trackingServiceCode">The provider code; compared case-insensitively.</param>
+    /// <param name="trackId">The tracking number; compared case-insensitively.</param>
+    /// <returns>The matching parcels, ordered by identifier.</returns>
+    IReadOnlyList<Parcel> GetByTrackId(string trackingServiceCode, string trackId);
+
+    /// <summary>
+    /// Checks whether a payment number is already in use.
+    /// </summary>
+    /// <param name="paymentNumber">The payment number to look for; compared case-insensitively.</param>
     /// <param name="excludingId">An optional row to ignore, used when validating an existing record.</param>
-    /// <returns><see langword="true"/> when another row already uses the tracking number.</returns>
-    bool TrackIdExists(string trackId, long? excludingId = null);
+    /// <returns><see langword="true"/> when another row already uses the payment number.</returns>
+    bool PaymentNumberExists(string paymentNumber, long? excludingId = null);
 }

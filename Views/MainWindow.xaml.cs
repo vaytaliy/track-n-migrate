@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -13,6 +14,12 @@ namespace MailIntegrator.Views;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
+
+    /// <summary>
+    /// Keeps the grid columns in step with the operator's stored column choice.
+    /// </summary>
+    private readonly GridColumnVisibilityBinder _columnVisibilityBinder;
+
     private bool _isCommittingDraft;
 
     /// <summary>
@@ -25,6 +32,7 @@ public partial class MainWindow : Window
 
         InitializeComponent();
         DataContext = viewModel;
+        _columnVisibilityBinder = new GridColumnVisibilityBinder(ParcelsGrid, viewModel.ColumnLayout);
 
         Loaded += OnLoaded;
         Closed += OnClosed;
@@ -44,6 +52,42 @@ public partial class MainWindow : Window
     /// <param name="sender">The window.</param>
     /// <param name="e">The event arguments.</param>
     private void OnClosed(object? sender, EventArgs e) => _viewModel.Dispose();
+
+    /// <summary>
+    /// Opens or closes the columns selector popover.
+    /// </summary>
+    /// <param name="sender">The "Колонки" button.</param>
+    /// <param name="e">The event arguments.</param>
+    private void OnColumnsButtonClick(object sender, RoutedEventArgs e) =>
+        ColumnsPopup.IsOpen = !ColumnsPopup.IsOpen;
+
+    /// <summary>
+    /// Sorts the saved rows through the view model instead of the platform, so the draft row can stay
+    /// pinned to the bottom. Repeated clicks on one header toggle ascending and descending.
+    /// </summary>
+    /// <param name="sender">The grid.</param>
+    /// <param name="e">The sort request.</param>
+    private void OnParcelsGridSorting(object? sender, DataGridSortingEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Column.SortMemberPath))
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        var direction = e.Column.SortDirection == ListSortDirection.Ascending
+            ? ListSortDirection.Descending
+            : ListSortDirection.Ascending;
+
+        foreach (var column in ParcelsGrid.Columns)
+        {
+            column.SortDirection = null;
+        }
+
+        e.Column.SortDirection = direction;
+        _viewModel.ApplySort(e.Column.SortMemberPath, direction);
+    }
 
     /// <summary>
     /// Selects the row that was right-clicked so the context menu acts on it.
@@ -72,7 +116,25 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Commits the draft row when the operator moves to another row, and opens the tracking number
+    /// Persists a saved row once its edit session ends, so an inline edit is no longer silently lost.
+    /// The draft row is excluded because it is committed through <see cref="CommitDraft"/>.
+    /// </summary>
+    /// <param name="sender">The grid.</param>
+    /// <param name="e">The event arguments.</param>
+    private void OnParcelsGridRowEditEnding(object? sender, DataGridRowEditEndingEventArgs e)
+    {
+        if (e.EditAction != DataGridEditAction.Commit
+            || e.Row.Item is not ParcelRowViewModel { IsDraft: false, IsEditable: true } row)
+        {
+            return;
+        }
+
+        // The edited values are still being committed to the row, so persist once the grid is done.
+        Dispatcher.BeginInvoke(() => _viewModel.SaveRow(row), DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// Commits the draft row when the operator moves to another row, and opens the payment number
     /// cell of the draft row as soon as it becomes current.
     /// </summary>
     /// <param name="sender">The grid.</param>
@@ -84,14 +146,14 @@ public partial class MainWindow : Window
             CommitDraft(refocusOnSuccess: false);
         }
 
-        // Open the tracking cell automatically when the draft row becomes current through the keyboard.
+        // Open the payment cell automatically when the draft row becomes current through the keyboard.
         // For a mouse click the operator chose a specific cell, so leave that choice (and its editing)
         // intact instead of redirecting the focus.
         if (!_isCommittingDraft
             && Mouse.LeftButton != MouseButtonState.Pressed
             && ParcelsGrid.SelectedItem is ParcelRowViewModel { IsDraft: true } draft)
         {
-            Dispatcher.BeginInvoke(() => BeginEditDraftTrackId(draft), DispatcherPriority.Input);
+            Dispatcher.BeginInvoke(() => BeginEditDraftPaymentNumber(draft), DispatcherPriority.Input);
         }
     }
 
@@ -137,12 +199,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Commits the draft row when the operator presses Enter inside it.
+    /// Commits the draft row when the operator presses Enter inside it, and keeps the operator in edit mode
+    /// when they move between editable cells with Tab.
     /// </summary>
     /// <param name="sender">The grid.</param>
     /// <param name="e">The event arguments.</param>
     private void OnParcelsGridPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Tab)
+        {
+            e.Handled = TryMoveToAdjacentEditableCell(backwards: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+            return;
+        }
+
         if (e.Key != Key.Enter || ParcelsGrid.CurrentItem is not ParcelRowViewModel { IsDraft: true })
         {
             return;
@@ -150,6 +219,63 @@ public partial class MainWindow : Window
 
         e.Handled = true;
         CommitDraft(refocusOnSuccess: true);
+    }
+
+    /// <summary>
+    /// Moves the current cell to the neighbouring editable text cell and opens its editor, so Tab needs a
+    /// single press per field instead of one press to move and a second to start editing.
+    /// </summary>
+    /// <param name="backwards"><see langword="true"/> to move to the previous editable cell.</param>
+    /// <returns><see langword="true"/> when focus moved; <see langword="false"/> when Tab must be left alone.</returns>
+    private bool TryMoveToAdjacentEditableCell(bool backwards)
+    {
+        if (ParcelsGrid.CurrentCell.Item is not ParcelRowViewModel { IsEditable: true } row
+            || ParcelsGrid.CurrentCell.Column is not { } currentColumn)
+        {
+            return false;
+        }
+
+        var editableColumns = ParcelsGrid.Columns
+            .Where(column => column is DataGridTemplateColumn { CellEditingTemplate: not null })
+            .ToList();
+
+        var currentIndex = editableColumns.IndexOf(currentColumn);
+        if (currentIndex < 0)
+        {
+            // The operator is on a read-only column; leave Tab to the platform navigation.
+            return false;
+        }
+
+        var targetIndex = backwards ? currentIndex - 1 : currentIndex + 1;
+
+        if (targetIndex < 0 || targetIndex >= editableColumns.Count)
+        {
+            return false;
+        }
+
+        var targetColumn = editableColumns[targetIndex];
+
+        // The cell being left is still open, and the grid refuses to edit a second cell until it is
+        // committed. Committing here is safe: the editor writes through on every keystroke.
+        ParcelsGrid.CommitEdit(DataGridEditingUnit.Cell, exitEditingMode: true);
+        ParcelsGrid.CurrentCell = new DataGridCellInfo(row, targetColumn);
+        ParcelsGrid.ScrollIntoView(row);
+        ParcelsGrid.UpdateLayout();
+
+        // The grid must own the focus before it will switch the cell into edit mode.
+        ParcelsGrid.Focus();
+        if (!ParcelsGrid.BeginEdit())
+        {
+            return true;
+        }
+
+        ParcelsGrid.UpdateLayout();
+        if (FindCellContent<TextBox>(row, targetColumn) is { } editor)
+        {
+            editor.Focus();
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -203,12 +329,12 @@ public partial class MainWindow : Window
                 // An explicit submit of an untouched draft should still land in the first required cell
                 // rather than silently doing nothing.
                 case CommitDraftResult.NothingToCommit when refocusOnSuccess && _viewModel.DraftRow is { } emptyDraft:
-                    BeginEditDraftTrackId(emptyDraft);
+                    BeginEditDraftPaymentNumber(emptyDraft);
                     break;
 
                 // The draft row was replaced, so aim at the new instance on the next dispatcher turn.
                 case CommitDraftResult.Succeeded when refocusOnSuccess && _viewModel.DraftRow is { } freshDraft:
-                    FocusDraftTrackId(freshDraft);
+                    FocusDraftPaymentNumber(freshDraft);
                     break;
             }
         }
@@ -219,29 +345,35 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Selects and scrolls to the fresh draft row, then opens its tracking number cell once the
+    /// Selects and scrolls to the fresh draft row, then opens its payment number cell once the
     /// collection change has been applied by the grid.
     /// </summary>
     /// <param name="draft">The draft row to focus.</param>
-    private void FocusDraftTrackId(ParcelRowViewModel draft)
+    private void FocusDraftPaymentNumber(ParcelRowViewModel draft)
     {
         Dispatcher.BeginInvoke(
             () =>
             {
                 ParcelsGrid.SelectedItem = draft;
                 ParcelsGrid.ScrollIntoView(draft);
-                BeginEditDraftTrackId(draft);
+                BeginEditDraftPaymentNumber(draft);
             },
             DispatcherPriority.Input);
     }
 
     /// <summary>
     /// Moves focus to the first required draft cell that still has a validation error, in the order the
-    /// operator is expected to fill them in (tracking number, then provider).
+    /// operator is expected to fill them in (payment number, then tracking number, then provider).
     /// </summary>
     /// <param name="draft">The blocked draft row.</param>
     private void FocusFirstInvalidDraftField(ParcelRowViewModel draft)
     {
+        if (HasValidationError(draft, nameof(ParcelRowViewModel.PaymentNumber)))
+        {
+            BeginEditDraftPaymentNumber(draft);
+            return;
+        }
+
         if (HasValidationError(draft, nameof(ParcelRowViewModel.TrackId)))
         {
             BeginEditDraftTrackId(draft);
@@ -255,17 +387,32 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Moves the current cell to the tracking number of the draft row and puts the caret in its editor.
+    /// Opens the payment number cell of the draft row, which is the first field the operator fills in.
     /// </summary>
     /// <param name="draft">The draft row to edit.</param>
-    private void BeginEditDraftTrackId(ParcelRowViewModel draft)
+    private void BeginEditDraftPaymentNumber(ParcelRowViewModel draft) =>
+        BeginEditDraftCell(draft, nameof(ParcelRowViewModel.PaymentNumber));
+
+    /// <summary>
+    /// Opens the tracking number cell of the draft row.
+    /// </summary>
+    /// <param name="draft">The draft row to edit.</param>
+    private void BeginEditDraftTrackId(ParcelRowViewModel draft) =>
+        BeginEditDraftCell(draft, nameof(ParcelRowViewModel.TrackId));
+
+    /// <summary>
+    /// Moves the current cell to a text column of the draft row and puts the caret in its editor.
+    /// </summary>
+    /// <param name="draft">The draft row to edit.</param>
+    /// <param name="sortMemberPath">The sort member path that identifies the target column.</param>
+    private void BeginEditDraftCell(ParcelRowViewModel draft, string sortMemberPath)
     {
-        if (FindDraftColumn(nameof(ParcelRowViewModel.TrackId)) is not { } trackIdColumn)
+        if (FindDraftColumn(sortMemberPath) is not { } column)
         {
             return;
         }
 
-        ParcelsGrid.CurrentCell = new DataGridCellInfo(draft, trackIdColumn);
+        ParcelsGrid.CurrentCell = new DataGridCellInfo(draft, column);
         ParcelsGrid.ScrollIntoView(draft);
         ParcelsGrid.UpdateLayout();
 
@@ -277,7 +424,7 @@ public partial class MainWindow : Window
         }
 
         ParcelsGrid.UpdateLayout();
-        if (FindCellContent<TextBox>(draft, trackIdColumn) is { } editor)
+        if (FindCellContent<TextBox>(draft, column) is { } editor)
         {
             editor.Focus();
             editor.SelectAll();

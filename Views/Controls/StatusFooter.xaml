@@ -1,0 +1,38 @@
+<UserControl x:Class="MailIntegrator.Views.Controls.StatusFooter"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Name="Footer"
+             mc:Ignorable="d"
+             d:DesignHeight="48"
+             d:DesignWidth="900">
+
+    <!--
+        Fixed-height footer for handled failures. The band is always reserved, so messages appearing or
+        disappearing never resize the grid above it. It is content agnostic: any screen can hand it any
+        sequence of messages, which is what makes it reusable; today the main window feeds it the shared
+        error log of the last synchronisation pass.
+
+        No icons on purpose: a faint red line of text is enough to catch the operator's attention without
+        shouting, and the messages remain readable when several of them are listed.
+    -->
+    <Border Background="{StaticResource CanvasBrush}"
+            BorderBrush="{StaticResource BorderSubtleBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="0,6">
+        <ScrollViewer Style="{StaticResource DarkScrollViewerStyle}"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Focusable="False">
+            <ItemsControl ItemsSource="{Binding Messages, ElementName=Footer}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <!-- The display text is ToString(), so plain strings and message records both work. -->
+                        <TextBlock Text="{Binding}" Style="{StaticResource FooterMessageTextStyle}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Border>
+</UserControl>

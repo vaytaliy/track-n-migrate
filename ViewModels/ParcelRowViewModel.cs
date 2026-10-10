@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using MailIntegrator.Infrastructure;
 using MailIntegrator.Models;
 using MailIntegrator.Services;
+using MailIntegrator.Utils;
 
 namespace MailIntegrator.ViewModels;
 
@@ -23,17 +24,14 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// <summary>The placeholder shown for columns that have no value.</summary>
     public const string EmptyValueDisplay = "—";
 
-    /// <summary>The marker shown on the draft row for columns the system fills in automatically.</summary>
-    public const string AutomaticValueDisplay = "Авто";
-
-    /// <summary>The prompt shown in the comment cell of an existing parcel without a comment.</summary>
-    public const string EmptyCommentPlaceholder = "Нажмите для добавления комментария...";
-
     /// <summary>The prompt shown in the comment cell of the draft row.</summary>
     public const string DraftCommentPlaceholder = "Доп. комментарий";
 
+    /// <summary>The prompt shown in the payment number cell of the draft row.</summary>
+    public const string DraftPaymentNumberPlaceholder = "Введите номер счёта";
+
     /// <summary>The prompt shown in the tracking number cell of the draft row.</summary>
-    public const string DraftTrackIdPlaceholder = "ВВЕДИТЕ ТРЕК-НОМЕР";
+    public const string DraftTrackIdPlaceholder = "Введите трек-номер";
 
     /// <summary>The prompt shown in the provider cell of the draft row.</summary>
     public const string DraftTrackingServicePlaceholder = "Выберите службу";
@@ -44,14 +42,28 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     private readonly Parcel _parcel;
     private readonly IClock _clock;
     private readonly ILocalTimeZone _localTimeZone;
-    private readonly Func<string, long?, bool> _isTrackIdAvailable;
+    private readonly Func<string, long?, bool> _isPaymentNumberAvailable;
 
     /// <summary>
-    /// Backing field for <see cref="TrackId"/>.
+    /// Resolves the public tracking page of a provider code and tracking number, or reports that the provider
+    /// has none.
+    /// </summary>
+    private readonly Func<string, string, Uri?> _resolveTrackingUrl;
+
+    /// <summary>
+    /// Backing field for <see cref="PaymentNumber"/>. Required and unique: the business key of the row.
+    /// </summary>
+    [ObservableProperty]
+    [Required(ErrorMessage = "Укажите номер счёта")]
+    [CustomValidation(typeof(ParcelRowViewModel), nameof(ValidatePaymentNumberUniqueness))]
+    private string _paymentNumber;
+
+    /// <summary>
+    /// Backing field for <see cref="TrackId"/>. Required, but deliberately not unique: several rows may
+    /// share one tracking number and are then polled and updated together.
     /// </summary>
     [ObservableProperty]
     [Required(ErrorMessage = "Укажите трекинг-номер")]
-    [CustomValidation(typeof(ParcelRowViewModel), nameof(ValidateTrackIdUniqueness))]
     private string _trackId;
 
     /// <summary>
@@ -82,24 +94,29 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// <param name="clock">The clock used to display the draft's automatic creation instant.</param>
     /// <param name="localTimeZone">The zone used to render UTC instants.</param>
     /// <param name="trackingServices">The provider descriptors offered by the registry.</param>
-    /// <param name="isTrackIdAvailable">Callback that reports whether a tracking number is still free.</param>
+    /// <param name="isPaymentNumberAvailable">Callback that reports whether a payment number is still free.</param>
+    /// <param name="resolveTrackingUrl">Callback that builds the provider's public page for a tracking number,
+    /// or returns <see langword="null"/> when the provider has none.</param>
     private ParcelRowViewModel(
         Parcel parcel,
         bool isDraft,
         IClock clock,
         ILocalTimeZone localTimeZone,
         IReadOnlyList<TrackingServiceDescriptor> trackingServices,
-        Func<string, long?, bool> isTrackIdAvailable)
+        Func<string, long?, bool> isPaymentNumberAvailable,
+        Func<string, string, Uri?> resolveTrackingUrl)
     {
         _parcel = parcel;
         _clock = clock;
         _localTimeZone = localTimeZone;
-        _isTrackIdAvailable = isTrackIdAvailable;
+        _isPaymentNumberAvailable = isPaymentNumberAvailable;
+        _resolveTrackingUrl = resolveTrackingUrl;
         TrackingServices = trackingServices;
         IsDraft = isDraft;
 
         // Assign the backing fields directly so that constructing a row does not run validation.
         _trackId = parcel.TrackId;
+        _paymentNumber = parcel.PaymentNumber;
         _comment = parcel.Comment ?? string.Empty;
         _selectedTrackingServiceCode = parcel.TrackingServiceCode ?? string.Empty;
     }
@@ -111,15 +128,17 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// <param name="clock">The clock used for display only.</param>
     /// <param name="localTimeZone">The zone used to render UTC instants.</param>
     /// <param name="trackingServices">The provider descriptors offered by the registry.</param>
-    /// <param name="isTrackIdAvailable">Callback that reports whether a tracking number is still free.</param>
+    /// <param name="isPaymentNumberAvailable">Callback that reports whether a payment number is still free.</param>
+    /// <param name="resolveTrackingUrl">Callback that builds the provider's public page for a tracking number.</param>
     /// <returns>The row view model.</returns>
     public static ParcelRowViewModel ForExisting(
         Parcel parcel,
         IClock clock,
         ILocalTimeZone localTimeZone,
         IReadOnlyList<TrackingServiceDescriptor> trackingServices,
-        Func<string, long?, bool> isTrackIdAvailable) =>
-        new(parcel, isDraft: false, clock, localTimeZone, trackingServices, isTrackIdAvailable);
+        Func<string, long?, bool> isPaymentNumberAvailable,
+        Func<string, string, Uri?> resolveTrackingUrl) =>
+        new(parcel, isDraft: false, clock, localTimeZone, trackingServices, isPaymentNumberAvailable, resolveTrackingUrl);
 
     /// <summary>
     /// Creates the unsaved draft row shown at the bottom of the grid.
@@ -127,13 +146,15 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// <param name="clock">The clock that supplies the automatic creation instant.</param>
     /// <param name="localTimeZone">The zone used to render UTC instants.</param>
     /// <param name="trackingServices">The provider descriptors offered by the registry.</param>
-    /// <param name="isTrackIdAvailable">Callback that reports whether a tracking number is still free.</param>
+    /// <param name="isPaymentNumberAvailable">Callback that reports whether a tracking number is still free.</param>
+    /// <param name="resolveTrackingUrl">Callback that builds the provider's public page for a tracking number.</param>
     /// <returns>The draft row view model.</returns>
     public static ParcelRowViewModel CreateDraft(
         IClock clock,
         ILocalTimeZone localTimeZone,
         IReadOnlyList<TrackingServiceDescriptor> trackingServices,
-        Func<string, long?, bool> isTrackIdAvailable) =>
+        Func<string, long?, bool> isPaymentNumberAvailable,
+        Func<string, string, Uri?> resolveTrackingUrl) =>
         new(
             new Parcel
             {
@@ -146,7 +167,8 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
             clock,
             localTimeZone,
             trackingServices,
-            isTrackIdAvailable);
+            isPaymentNumberAvailable,
+            resolveTrackingUrl);
 
     /// <summary>
     /// Gets a value indicating whether this row is the unsaved draft row.
@@ -213,14 +235,16 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     public bool IsEditable => !IsMigratedTo1CFlag;
 
     /// <summary>
-    /// Gets a value indicating whether the draft row still needs its tracking number filled in.
+    /// Gets the payment number cell: the value, or the draft prompt / empty placeholder when missing.
     /// </summary>
-    public bool IsTrackIdPlaceholder => string.IsNullOrWhiteSpace(TrackId);
+    public CellText PaymentNumberCell =>
+        CellText.Resolve(PaymentNumber, IsDraft ? DraftPaymentNumberPlaceholder : EmptyValueDisplay);
 
     /// <summary>
-    /// Gets a value indicating whether a tracking number has been entered on this row.
+    /// Gets the tracking number cell: the value, or the draft prompt / empty placeholder when missing.
     /// </summary>
-    public bool HasTrackId => !string.IsNullOrWhiteSpace(TrackId);
+    public CellText TrackIdCell =>
+        CellText.Resolve(TrackId, IsDraft ? DraftTrackIdPlaceholder : EmptyValueDisplay);
 
     /// <summary>
     /// Gets a value indicating whether the provider cell has no value and should render its prompt.
@@ -229,14 +253,16 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
         string.IsNullOrWhiteSpace(IsDraft ? SelectedTrackingServiceCode : _parcel.TrackingServiceCode);
 
     /// <summary>
-    /// Gets a value indicating whether the comment column should render its prompt instead of a value.
+    /// Gets the comment cell: the value, the draft prompt, or the empty placeholder.
     /// </summary>
-    public bool IsCommentPlaceholder => string.IsNullOrWhiteSpace(Comment);
+    public CellText CommentCell =>
+        CellText.Resolve(Comment, IsDraft ? DraftCommentPlaceholder : EmptyValueDisplay);
 
     /// <summary>
-    /// Gets a value indicating whether the comment lock caption should be shown.
+    /// Gets the caption rendered under a comment that can no longer be edited, or an empty string while
+    /// the comment is editable.
     /// </summary>
-    public bool ShowLockedCommentCaption => IsMigratedTo1CFlag;
+    public string CommentLockCaption => IsMigratedTo1CFlag ? LockedCommentCaption : string.Empty;
 
     /// <summary>
     /// Gets a value indicating whether a generic status has been observed.
@@ -254,18 +280,29 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
         && _parcel.LastStatus?.IsFinal() != true;
 
     /// <summary>
-    /// Gets the row number shown in the leading column, or an asterisk for the draft row.
+    /// Gets the public tracking page of this parcel, or <see langword="null"/> when there is nothing to open:
+    /// the draft row, a missing tracking number or provider, or a provider that publishes no page.
     /// </summary>
-    public string RowNumberDisplay =>
-        IsDraft ? "*" : RowNumber.ToString(CultureInfo.InvariantCulture);
+    public Uri? TrackingUrl
+    {
+        get
+        {
+            if (IsDraft
+                || TextField.IsEmpty(TrackId)
+                || TextField.IsEmpty(_parcel.TrackingServiceCode))
+            {
+                return null;
+            }
+
+            return _resolveTrackingUrl(_parcel.TrackingServiceCode!, TrackId);
+        }
+    }
 
     /// <summary>
-    /// Gets the tracking number cell text, falling back to the appropriate prompt.
+    /// Gets the row number shown in the leading column, or the empty placeholder for the draft row.
     /// </summary>
-    public string TrackIdDisplay =>
-        IsTrackIdPlaceholder
-            ? (IsDraft ? DraftTrackIdPlaceholder : EmptyValueDisplay)
-            : TrackId;
+    public string RowNumberDisplay =>
+        IsDraft ? EmptyValueDisplay : RowNumber.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Gets the provider cell text: the selected display name on the draft row, the persisted provider
@@ -292,61 +329,36 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// Gets the creation instant formatted for display: live local time on the draft row, the persisted
     /// instant on saved rows.
     /// </summary>
-    public string CreatedDatetimeDisplay
-    {
-        get
-        {
-            if (IsDraft)
-            {
-                return $"{FormatLocal(_clock.UtcNow)} ({AutomaticValueDisplay})";
-            }
-
-            return FormatLocal(_parcel.CreatedDatetimeUtc);
-        }
-    }
+    public string CreatedDatetimeDisplay =>
+        FormatLocal(IsDraft ? _clock.UtcNow : _parcel.CreatedDatetimeUtc);
 
     /// <summary>
-    /// Gets the dispatch instant in local time, or the automatic marker on the draft row because the
-    /// value is only known after the carrier is contacted.
+    /// Gets the dispatch instant in local time, or the empty placeholder while the carrier has not reported it.
     /// </summary>
-    public string SentDatetimeDisplay =>
-        IsDraft ? AutomaticValueDisplay : FormatOptionalLocal(_parcel.SentDatetimeUtc);
+    public string SentDatetimeDisplay => FormatOptionalLocal(_parcel.SentDatetimeUtc);
 
     /// <summary>
-    /// Gets the delivery instant in local time, or the automatic marker on the draft row.
+    /// Gets the delivery instant in local time, or the empty placeholder while the carrier has not reported it.
     /// </summary>
-    public string ReceivedDatetimeDisplay =>
-        IsDraft ? AutomaticValueDisplay : FormatOptionalLocal(_parcel.ReceivedDatetimeUtc);
+    public string ReceivedDatetimeDisplay => FormatOptionalLocal(_parcel.ReceivedDatetimeUtc);
 
     /// <summary>
-    /// Gets the last status report instant in local time, or the automatic marker on the draft row.
+    /// Gets the last status report instant in local time, or the empty placeholder while no report exists.
     /// </summary>
-    public string LastCheckedDatetimeDisplay =>
-        IsDraft ? AutomaticValueDisplay : FormatOptionalLocal(_parcel.LastCheckedDatetimeUtc);
+    public string LastCheckedDatetimeDisplay => FormatOptionalLocal(_parcel.LastCheckedDatetimeUtc);
 
     /// <summary>
-    /// Gets the 1C export instant formatted in UTC, or the automatic marker on the draft row.
+    /// Gets the 1C export instant formatted in UTC, or the empty placeholder while the parcel was not exported.
     /// </summary>
-    public string MigratedTo1CDatetimeDisplay =>
-        IsDraft ? AutomaticValueDisplay : FormatOptionalUtc(_parcel.MigratedTo1CDatetimeUtc);
+    public string MigratedTo1CDatetimeDisplay => FormatOptionalUtc(_parcel.MigratedTo1CDatetimeUtc);
 
     /// <summary>
-    /// Gets the localized status label, the empty-value placeholder when no status was observed, or the
-    /// automatic marker on the draft row.
+    /// Gets the localized status label, or the empty placeholder while no status was observed. The draft row
+    /// has no status either, so it shows the same placeholder as an unsaved value.
     /// </summary>
-    public string StatusLabel => IsDraft
-        ? AutomaticValueDisplay
-        : _parcel.LastStatus is { } status ? status.ToDisplayLabel() : EmptyValueDisplay;
-
-    /// <summary>
-    /// Gets the comment cell text, falling back to the appropriate prompt.
-    /// </summary>
-    public string CommentDisplay =>
-        IsCommentPlaceholder
-            ? (IsDraft
-                ? DraftCommentPlaceholder
-                : (IsMigratedTo1CFlag ? EmptyValueDisplay : EmptyCommentPlaceholder))
-            : Comment;
+    public string StatusLabel => _parcel.LastStatus is { } status
+        ? status.ToDisplayLabel()
+        : EmptyValueDisplay;
 
     /// <summary>
     /// Validates every editable column and reports whether the row can be persisted.
@@ -364,24 +376,24 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     /// <param name="value">The candidate tracking number.</param>
     /// <param name="context">The validation context, used to reach the owning row.</param>
     /// <returns>The validation outcome.</returns>
-    public static ValidationResult? ValidateTrackIdUniqueness(object? value, ValidationContext context)
+    public static ValidationResult? ValidatePaymentNumberUniqueness(object? value, ValidationContext context)
     {
         if (context.ObjectInstance is not ParcelRowViewModel row)
         {
             return ValidationResult.Success;
         }
 
-        var trackId = value as string;
-        if (string.IsNullOrWhiteSpace(trackId))
+        var paymentNumber = value as string;
+        if (TextField.IsEmpty(paymentNumber))
         {
             // The Required attribute owns the "missing value" case.
             return ValidationResult.Success;
         }
 
         long? excludingId = row.IsDraft ? null : row.Id;
-        return row._isTrackIdAvailable(trackId, excludingId)
+        return row._isPaymentNumberAvailable(paymentNumber, excludingId)
             ? ValidationResult.Success
-            : new ValidationResult("Такой трекинг-номер уже добавлен");
+            : new ValidationResult("Такой номер счёта уже добавлен");
     }
 
     /// <summary>
@@ -396,16 +408,32 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
     }
 
     /// <summary>
-    /// Copies the edited values back onto the backing parcel after a successful save.
+    /// Copies the edited values back onto the backing parcel after a successful save, so the row and its
+    /// stored snapshot agree once more.
     /// </summary>
+    /// <param name="paymentNumber">The persisted payment number.</param>
     /// <param name="trackId">The persisted tracking number.</param>
     /// <param name="comment">The persisted comment, or <see langword="null"/>.</param>
-    public void ApplyPersistedValues(string trackId, string? comment)
+    public void ApplyPersistedValues(string paymentNumber, string trackId, string? comment)
     {
+        PaymentNumber = paymentNumber;
         TrackId = trackId;
         Comment = comment ?? string.Empty;
+        _parcel.PaymentNumber = paymentNumber;
         _parcel.TrackId = trackId;
         _parcel.Comment = comment;
+    }
+
+    /// <summary>
+    /// Restores the values of the last successful save after a rejected edit, so a row that could not be
+    /// persisted does not keep the rejected values on screen.
+    /// </summary>
+    public void RevertToStoredValues()
+    {
+        PaymentNumber = _parcel.PaymentNumber;
+        TrackId = _parcel.TrackId;
+        Comment = _parcel.Comment ?? string.Empty;
+        ValidateAllProperties();
     }
 
     /// <summary>
@@ -472,24 +500,26 @@ public sealed partial class ParcelRowViewModel : ObservableValidator
             : $"{utc.Value.ToString(TimestampFormat, CultureInfo.InvariantCulture)} UTC";
 
     /// <summary>
-    /// Notifies the computed display members when the tracking number changes.
+    /// Notifies the computed cell content when the payment number changes.
+    /// </summary>
+    /// <param name="value">The new payment number.</param>
+    partial void OnPaymentNumberChanged(string value) => OnPropertyChanged(nameof(PaymentNumberCell));
+
+    /// <summary>
+    /// Notifies the computed cell content and the tracking link when the tracking number changes.
     /// </summary>
     /// <param name="value">The new tracking number.</param>
     partial void OnTrackIdChanged(string value)
     {
-        OnPropertyChanged(nameof(TrackIdDisplay));
-        OnPropertyChanged(nameof(IsTrackIdPlaceholder));
+        OnPropertyChanged(nameof(TrackIdCell));
+        OnPropertyChanged(nameof(TrackingUrl));
     }
 
     /// <summary>
-    /// Notifies the computed display members when the comment changes.
+    /// Notifies the computed cell content when the comment changes.
     /// </summary>
     /// <param name="value">The new comment.</param>
-    partial void OnCommentChanged(string value)
-    {
-        OnPropertyChanged(nameof(CommentDisplay));
-        OnPropertyChanged(nameof(IsCommentPlaceholder));
-    }
+    partial void OnCommentChanged(string value) => OnPropertyChanged(nameof(CommentCell));
 
     /// <summary>
     /// Notifies the computed display members when the selected provider changes.

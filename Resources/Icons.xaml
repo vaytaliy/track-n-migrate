@@ -21,10 +21,10 @@
     <PathGeometry x:Key="LinkGeometry"
                   Figures="M 6.5,9.5 A 2.5,2.5 0 0 0 10,9.5 L 12.5,7 A 2.5,2.5 0 0 0 9,3.5 L 7.5,5 M 9.5,6.5 A 2.5,2.5 0 0 0 6,6.5 L 3.5,9 A 2.5,2.5 0 0 0 7,12.5 L 8.5,11" />
 
-    <!-- Success checkmark, also used by the "Доставлено" status badge. -->
+    <!-- Success checkmark shown by the sync status strip. -->
     <PathGeometry x:Key="CheckGeometry" Figures="M 2.5,8.5 L 6.5,12.5 L 15,3" />
 
-    <!-- Failure warning triangle with an exclamation mark. -->
+    <!-- Failure warning triangle with an exclamation mark, shown by the sync status strip. -->
     <PathGeometry x:Key="WarningGeometry"
                   Figures="M 9,2.5 L 16.5,15.5 H 1.5 Z M 9,7 V 11.5 M 9,13.2 V 13.6" />
 
@@ -39,14 +39,6 @@
     <!-- Settings dialog entry point, drawn as sliders. -->
     <PathGeometry x:Key="SettingsGeometry"
                   Figures="M 2,4.5 H 14 M 5.5,2.5 V 6.5 M 2,11.5 H 14 M 10.5,9.5 V 13.5" />
-
-    <!-- "В пути" status badge. -->
-    <PathGeometry x:Key="InTransitGeometry"
-                  Figures="M 2,8 H 12 M 8.5,4.5 L 12,8 L 8.5,11.5" />
-
-    <!-- "Ожидает отправки" status badge. -->
-    <PathGeometry x:Key="ClockGeometry"
-                  Figures="M 8,3.5 A 4.5,4.5 0 1 0 8,12.5 A 4.5,4.5 0 1 0 8,3.5 Z M 8,5.5 V 8.2 L 10.2,9.6" />
 
     <!-- Document/box icon used by the window title artwork. -->
     <PathGeometry x:Key="ParcelGeometry"

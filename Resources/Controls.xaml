@@ -6,6 +6,7 @@
 
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
+    <conv:NullToVisibilityConverter x:Key="NullToVisibility" />
 
     <!-- ============================== Icons ============================== -->
 
@@ -63,7 +64,9 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
                     <Grid Background="Transparent">
-                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track x:Name="PART_Track"
+                               IsDirectionReversed="True"
+                               Orientation="{TemplateBinding Orientation}">
                             <Track.DecreaseRepeatButton>
                                 <RepeatButton Style="{StaticResource ScrollBarPageButtonStyle}"
                                               Command="ScrollBar.PageUpCommand" />
@@ -78,9 +81,17 @@
                         </Track>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!--
+                            The default setters size a VERTICAL bar. A horizontal bar must stretch to the
+                            full width instead, and its track must run horizontally, otherwise the thumb
+                            is measured against a 10px vertical track and collapses to a dot.
+                        -->
                         <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter Property="Width" Value="Auto" />
+                            <Setter Property="MinWidth" Value="0" />
                             <Setter Property="Height" Value="10" />
                             <Setter Property="MinHeight" Value="10" />
+                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -157,6 +168,30 @@
 
     <Style x:Key="IconOnlyButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
         <Setter Property="Padding" Value="10" />
+    </Style>
+
+    <!--
+        The tracking-number cell renders its link icon through this button: no chrome and no background,
+        only the hand cursor and a tooltip, so the icon stays the clickable affordance of the value.
+    -->
+    <Style x:Key="LinkIconButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0,0,6,0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="ToolTip" Value="Открыть страницу отслеживания в браузере" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="Transparent">
+                        <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="AccentButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
@@ -461,6 +496,22 @@
         <Setter Property="ToolTip" Value="Значение в UTC" />
     </Style>
 
+    <!--
+        Header of a column the operator can edit. The pencil is declared once here instead of on every
+        cell, so the affordance appears exactly once per column and the cells stay icon-free.
+        The header's own text is still the column's Header string, presented through the ContentPresenter.
+    -->
+    <DataTemplate x:Key="EditableColumnHeaderTemplate">
+        <StackPanel Orientation="Horizontal">
+            <ContentPresenter Content="{Binding}" VerticalAlignment="Center" />
+            <Path Data="{StaticResource PencilGeometry}"
+                  Stroke="{StaticResource ForegroundMutedBrush}"
+                  Margin="6,0,0,0"
+                  ToolTip="Значение можно изменить"
+                  Style="{StaticResource SmallIconPathStyle}" />
+        </StackPanel>
+    </DataTemplate>
+
     <Style x:Key="DataGridCellStyle" TargetType="DataGridCell">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
@@ -633,6 +684,40 @@
     <Style x:Key="StatusBadgeTextStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="{StaticResource FontSizeSmall}" />
         <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
+    <!-- ============================== Popover ============================== -->
+
+    <!-- Dark card shared by the header popovers (the columns selector). -->
+    <Style x:Key="PopoverCardStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="MinWidth" Value="270" />
+    </Style>
+
+    <Style x:Key="PopoverSectionHeaderStyle" TargetType="TextBlock" BasedOn="{StaticResource SmallMutedTextStyle}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,2,0,6" />
+    </Style>
+
+    <Style x:Key="PopoverSeparatorStyle" TargetType="Separator">
+        <Setter Property="Background" Value="{StaticResource BorderSubtleBrush}" />
+        <Setter Property="Margin" Value="0,8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Height="1" Background="{TemplateBinding Background}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="PopoverOptionTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="6,0,0,0" />
     </Style>
 
 </ResourceDictionary>

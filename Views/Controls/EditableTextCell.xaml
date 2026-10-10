@@ -1,0 +1,93 @@
+<UserControl x:Class="MailIntegrator.Views.Controls.EditableTextCell"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Name="Cell"
+             mc:Ignorable="d"
+             d:DesignHeight="24"
+             d:DesignWidth="160">
+
+    <!--
+        Display half of an editable text column. The DataGrid swaps this for the column's editing
+        template while the cell is in edit mode, so this control only has to render the value, its
+        placeholder styling and the optional tracking link. Every editable string column shares this markup.
+
+        The edit pencil is not here: it lives once in the column header (EditableColumnHeaderTemplate), so a
+        column does not repeat the symbol on every row.
+    -->
+    <StackPanel VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal">
+            <!--
+                Link to the provider's own tracking page. It is rendered only when the provider publishes a
+                URL for this tracking number, which is how a provider says "not implemented".
+            -->
+            <Button Click="OnTrackingLinkClick">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource LinkIconButtonStyle}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding LinkUrl, ElementName=Cell, Converter={StaticResource NullToVisibility}}"
+                                               Value="Visible" />
+                                    <Condition Binding="{Binding CellContent.IsPlaceholder, ElementName=Cell}" Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <Path Data="{StaticResource LinkGeometry}"
+                      Stroke="{StaticResource AccentBrush}"
+                      Style="{StaticResource SmallIconPathStyle}" />
+            </Button>
+
+            <TextBlock Text="{Binding CellContent.Text, ElementName=Cell}"
+                       VerticalAlignment="Center"
+                       TextWrapping="{Binding TextWrapping, ElementName=Cell}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextStyle}">
+                        <Style.Triggers>
+                            <!-- Identifier columns emphasise their editable value; the comment does not. -->
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsEmphasised, ElementName=Cell}" Value="True" />
+                                    <Condition Binding="{Binding IsEditable, ElementName=Cell}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </MultiDataTrigger>
+                            <!-- A missing value and a locked value both read as a muted prompt. -->
+                            <DataTrigger Binding="{Binding CellContent.IsPlaceholder, ElementName=Cell}" Value="True">
+                                <Setter Property="FontStyle" Value="Italic" />
+                                <Setter Property="FontWeight" Value="Normal" />
+                                <Setter Property="Foreground" Value="{StaticResource ForegroundMutedBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsLocked, ElementName=Cell}" Value="True">
+                                <Setter Property="FontStyle" Value="Italic" />
+                                <Setter Property="FontWeight" Value="Normal" />
+                                <Setter Property="Foreground" Value="{StaticResource ForegroundMutedBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </StackPanel>
+
+        <!-- Optional caption under the value; hidden while the bound caption is empty. -->
+        <TextBlock Text="{Binding Caption, ElementName=Cell}">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource SmallMutedTextStyle}">
+                    <Setter Property="FontStyle" Value="Italic" />
+                    <Setter Property="TextWrapping" Value="Wrap" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Caption, ElementName=Cell}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+    </StackPanel>
+</UserControl>

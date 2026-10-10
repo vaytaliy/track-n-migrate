@@ -32,6 +32,8 @@
     <Color x:Key="WarningSurfaceColor">#FF33280D</Color>
     <Color x:Key="ErrorColor">#FFF85149</Color>
     <Color x:Key="ErrorSurfaceColor">#FF3A1A18</Color>
+    <!-- Subdued red for the footer error list: noticeable without shouting. -->
+    <Color x:Key="FaintErrorColor">#FFDE9A94</Color>
     <Color x:Key="InfoColor">#FF4C9AFF</Color>
     <Color x:Key="InfoSurfaceColor">#FF152840</Color>
 
@@ -63,6 +65,7 @@
     <SolidColorBrush x:Key="WarningSurfaceBrush" Color="{StaticResource WarningSurfaceColor}" />
     <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
     <SolidColorBrush x:Key="ErrorSurfaceBrush" Color="{StaticResource ErrorSurfaceColor}" />
+    <SolidColorBrush x:Key="FaintErrorBrush" Color="{StaticResource FaintErrorColor}" />
     <SolidColorBrush x:Key="InfoBrush" Color="{StaticResource InfoColor}" />
     <SolidColorBrush x:Key="InfoSurfaceBrush" Color="{StaticResource InfoSurfaceColor}" />
 
@@ -89,6 +92,12 @@
 
     <Style x:Key="SmallMutedTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MutedTextStyle}">
         <Setter Property="FontSize" Value="{StaticResource FontSizeSmall}" />
+    </Style>
+
+    <!-- One message of the fixed-height footer: wrapped, faint red and icon-free. -->
+    <Style x:Key="FooterMessageTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SmallMutedTextStyle}">
+        <Setter Property="Foreground" Value="{StaticResource FaintErrorBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
     <Style x:Key="GridCellTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">

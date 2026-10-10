@@ -10,6 +10,7 @@ public sealed class ParcelRepository : IParcelRepository
 {
     private const string SelectColumns = """
         Id,
+        PaymentNumber,
         TrackId,
         TrackingServiceCode,
         CreatedDatetimeUtc,
@@ -24,6 +25,7 @@ public sealed class ParcelRepository : IParcelRepository
 
     private const string InsertSql = """
         INSERT INTO Parcels (
+            PaymentNumber,
             TrackId,
             TrackingServiceCode,
             CreatedDatetimeUtc,
@@ -35,6 +37,7 @@ public sealed class ParcelRepository : IParcelRepository
             IsMigratedTo1CFlag,
             MigratedTo1CDatetimeUtc)
         VALUES (
+            $paymentNumber,
             $trackId,
             $trackingServiceCode,
             $createdDatetimeUtc,
@@ -50,6 +53,7 @@ public sealed class ParcelRepository : IParcelRepository
 
     private const string UpdateSql = """
         UPDATE Parcels SET
+            PaymentNumber           = $paymentNumber,
             TrackId                 = $trackId,
             SentDatetimeUtc         = $sentDatetimeUtc,
             ReceivedDatetimeUtc     = $receivedDatetimeUtc,
@@ -102,6 +106,7 @@ public sealed class ParcelRepository : IParcelRepository
         using var connection = _database.OpenConnection();
         var id = connection.ExecuteScalar<long>(InsertSql, new
         {
+            paymentNumber = parcel.PaymentNumber,
             trackId = parcel.TrackId,
             trackingServiceCode = parcel.TrackingServiceCode,
             createdDatetimeUtc = parcel.CreatedDatetimeUtc,
@@ -127,6 +132,7 @@ public sealed class ParcelRepository : IParcelRepository
         var affected = connection.Execute(UpdateSql, new
         {
             id = parcel.Id,
+            paymentNumber = parcel.PaymentNumber,
             trackId = parcel.TrackId,
             sentDatetimeUtc = parcel.SentDatetimeUtc,
             receivedDatetimeUtc = parcel.ReceivedDatetimeUtc,
@@ -156,19 +162,38 @@ public sealed class ParcelRepository : IParcelRepository
     }
 
     /// <inheritdoc />
-    public bool TrackIdExists(string trackId, long? excludingId = null)
+    public bool PaymentNumberExists(string paymentNumber, long? excludingId = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(trackId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentNumber);
 
         using var connection = _database.OpenConnection();
         return connection.ExecuteScalar<bool>("""
             SELECT EXISTS (
                 SELECT 1
                 FROM Parcels
-                WHERE TrackId = $trackId COLLATE NOCASE
+                WHERE PaymentNumber = $paymentNumber COLLATE NOCASE
                   AND ($excludingId IS NULL OR Id <> $excludingId)
             );
             """,
-            new { trackId = trackId.Trim(), excludingId });
+            new { paymentNumber = paymentNumber.Trim(), excludingId });
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<Parcel> GetByTrackId(string trackingServiceCode, string trackId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackingServiceCode);
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackId);
+
+        using var connection = _database.OpenConnection();
+        var parcels = connection.Query<Parcel>($"""
+            SELECT {SelectColumns}
+            FROM Parcels
+            WHERE TrackingServiceCode = $trackingServiceCode COLLATE NOCASE
+              AND TrackId = $trackId COLLATE NOCASE
+            ORDER BY Id;
+            """,
+            new { trackingServiceCode = trackingServiceCode.Trim(), trackId = trackId.Trim() });
+
+        return parcels.AsList();
     }
 }

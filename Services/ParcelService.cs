@@ -1,6 +1,7 @@
 using MailIntegrator.Data;
 using MailIntegrator.Infrastructure;
 using MailIntegrator.Models;
+using MailIntegrator.Utils;
 
 namespace MailIntegrator.Services;
 
@@ -42,14 +43,17 @@ public sealed class ParcelService : IParcelService
     /// <see langword="false"/>, and the sync owned fields start empty. The provider is written once and
     /// is never modified afterwards.
     /// </remarks>
-    public Parcel CreateParcel(string trackId, string trackingServiceCode)
+    public Parcel CreateParcel(string paymentNumber, string trackId, string trackingServiceCode)
     {
-        var normalizedTrackId = NormalizeTrackId(trackId);
-        EnsureTrackIdIsUsable(normalizedTrackId, excludingId: null);
+        var normalizedPaymentNumber = TextField.Normalize(paymentNumber);
+        EnsurePaymentNumberIsUsable(normalizedPaymentNumber, excludingId: null);
+        var normalizedTrackId = TextField.Normalize(trackId);
+        EnsureTrackIdIsPresent(normalizedTrackId);
         var normalizedProviderCode = NormalizeProviderCode(trackingServiceCode);
 
         var parcel = new Parcel
         {
+            PaymentNumber = normalizedPaymentNumber,
             TrackId = normalizedTrackId,
             TrackingServiceCode = normalizedProviderCode,
             CreatedDatetimeUtc = _clock.UtcNow,
@@ -89,16 +93,47 @@ public sealed class ParcelService : IParcelService
     }
 
     /// <inheritdoc />
-    public Parcel UpdateEditableFields(long id, string trackId, string? comment)
+    public int ApplyTrackingResultToTrackId(
+        string trackingServiceCode,
+        string trackId,
+        TrackingResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var updated = 0;
+        foreach (var parcel in _repository.GetByTrackId(trackingServiceCode, trackId))
+        {
+            if (parcel.LastStatus?.IsFinal() == true)
+            {
+                continue;
+            }
+
+            parcel.LastStatus = result.CurrentStatus;
+            parcel.LastCheckedDatetimeUtc = result.StatusDatetimeUtc;
+
+            if (_repository.Update(parcel))
+            {
+                updated++;
+            }
+        }
+
+        return updated;
+    }
+
+    /// <inheritdoc />
+    public Parcel UpdateEditableFields(long id, string paymentNumber, string trackId, string? comment)
     {
         var parcel = _repository.GetById(id)
             ?? throw new ParcelValidationException($"Parcel {id} does not exist.");
 
         EnsureNotMigrated(parcel);
 
-        var normalizedTrackId = NormalizeTrackId(trackId);
-        EnsureTrackIdIsUsable(normalizedTrackId, excludingId: id);
+        var normalizedPaymentNumber = TextField.Normalize(paymentNumber);
+        EnsurePaymentNumberIsUsable(normalizedPaymentNumber, excludingId: id);
+        var normalizedTrackId = TextField.Normalize(trackId);
+        EnsureTrackIdIsPresent(normalizedTrackId);
 
+        parcel.PaymentNumber = normalizedPaymentNumber;
         parcel.TrackId = normalizedTrackId;
         parcel.Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
 
@@ -120,15 +155,8 @@ public sealed class ParcelService : IParcelService
     }
 
     /// <inheritdoc />
-    public bool IsTrackIdAvailable(string trackId, long? excludingId = null) =>
-        !string.IsNullOrWhiteSpace(trackId) && !_repository.TrackIdExists(trackId, excludingId);
-
-    /// <summary>
-    /// Trims surrounding whitespace from a tracking number.
-    /// </summary>
-    /// <param name="trackId">The raw tracking number.</param>
-    /// <returns>The trimmed tracking number.</returns>
-    private static string NormalizeTrackId(string trackId) => trackId?.Trim() ?? string.Empty;
+    public bool IsPaymentNumberAvailable(string paymentNumber, long? excludingId = null) =>
+        !TextField.IsEmpty(paymentNumber) && !_repository.PaymentNumberExists(paymentNumber, excludingId);
 
     /// <summary>
     /// Enforces that a parcel has not been exported to 1C, which makes it read-only.
@@ -145,21 +173,35 @@ public sealed class ParcelService : IParcelService
     }
 
     /// <summary>
-    /// Validates a tracking number for presence, format and uniqueness.
+    /// Validates a payment number for presence and uniqueness.
     /// </summary>
-    /// <param name="trackId">The already normalised tracking number.</param>
+    /// <param name="paymentNumber">The already normalised payment number.</param>
     /// <param name="excludingId">An optional parcel to ignore during the uniqueness check.</param>
-    /// <exception cref="ParcelValidationException">The tracking number is invalid or already in use.</exception>
-    private void EnsureTrackIdIsUsable(string trackId, long? excludingId)
+    /// <exception cref="ParcelValidationException">The payment number is missing or already in use.</exception>
+    private void EnsurePaymentNumberIsUsable(string paymentNumber, long? excludingId)
     {
-        if (string.IsNullOrWhiteSpace(trackId))
+        if (TextField.IsEmpty(paymentNumber))
         {
-            throw new ParcelValidationException("A tracking number is required.");
+            throw new ParcelValidationException("A payment number is required.");
         }
 
-        if (_repository.TrackIdExists(trackId, excludingId))
+        if (_repository.PaymentNumberExists(paymentNumber, excludingId))
         {
-            throw new ParcelValidationException($"Tracking number '{trackId}' is already in use.");
+            throw new ParcelValidationException($"Payment number '{paymentNumber}' is already in use.");
+        }
+    }
+
+    /// <summary>
+    /// Validates that a tracking number is present. It is deliberately not checked for uniqueness, because
+    /// several parcels may be registered under the same tracking number.
+    /// </summary>
+    /// <param name="trackId">The already normalised tracking number.</param>
+    /// <exception cref="ParcelValidationException">The tracking number is missing.</exception>
+    private static void EnsureTrackIdIsPresent(string trackId)
+    {
+        if (TextField.IsEmpty(trackId))
+        {
+            throw new ParcelValidationException("A tracking number is required.");
         }
     }
 

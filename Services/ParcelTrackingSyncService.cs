@@ -6,10 +6,14 @@ namespace MailIntegrator.Services;
 /// Default <see cref="ITrackingSyncService"/> implementation.
 /// </summary>
 /// <remarks>
-/// Parcels are grouped by provider so each provider authenticates once per run. Parcels without a
-/// provider, and parcels whose provider is no longer registered, are skipped rather than failed, because
-/// neither can be routed. A configured provider that is missing its credentials fails the whole pass:
-/// silently skipping its parcels would leave the operator with stale data and no explanation.
+/// Parcels are grouped by provider so each provider authenticates once per run, then by tracking number so
+/// a duplicated tracking number is polled once and the answer is applied to every row that shares it.
+/// Parcels without a provider, and parcels whose provider is no longer registered, are skipped rather than
+/// failed, because neither can be routed. Every provider call is routed through a <see cref="ProviderCallGuard"/>:
+/// a failure is reported to the shared <see cref="IUserErrorLog"/> and the pass continues with the next
+/// tracking number, so one bad parcel can no longer hide the status of all the others. A provider that
+/// cannot authenticate is skipped for the rest of the pass, but its failure is reported and the remaining
+/// providers still run.
 /// </remarks>
 public sealed class ParcelTrackingSyncService : ITrackingSyncService
 {
@@ -18,20 +22,28 @@ public sealed class ParcelTrackingSyncService : ITrackingSyncService
     private readonly ISecretStore _secretStore;
 
     /// <summary>
+    /// Reports every handled provider failure instead of letting it end the pass.
+    /// </summary>
+    private readonly ProviderCallGuard _callGuard;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="ParcelTrackingSyncService"/> class.
     /// </summary>
     /// <param name="parcelService">Reads and updates the stored parcels.</param>
     /// <param name="trackingServiceRegistry">Resolves the provider that owns a parcel.</param>
     /// <param name="secretStore">Supplies the basic-auth credentials of each provider.</param>
+    /// <param name="errorLog">Collects the failures of the current pass for the footer.</param>
     public ParcelTrackingSyncService(
         IParcelService parcelService,
         ITrackingServiceRegistry trackingServiceRegistry,
-        ISecretStore secretStore)
+        ISecretStore secretStore,
+        IUserErrorLog errorLog)
     {
         _parcelService = parcelService ?? throw new ArgumentNullException(nameof(parcelService));
         _trackingServiceRegistry =
             trackingServiceRegistry ?? throw new ArgumentNullException(nameof(trackingServiceRegistry));
         _secretStore = secretStore ?? throw new ArgumentNullException(nameof(secretStore));
+        _callGuard = new ProviderCallGuard(errorLog ?? throw new ArgumentNullException(nameof(errorLog)));
     }
 
     /// <inheritdoc />
@@ -42,22 +54,38 @@ public sealed class ParcelTrackingSyncService : ITrackingSyncService
             .Where(parcel => parcel.LastStatus?.IsFinal() != true)
             .ToList();
 
-        foreach (var group in pending.GroupBy(
+        foreach (var providerGroup in pending.GroupBy(
             parcel => parcel.TrackingServiceCode!,
             StringComparer.OrdinalIgnoreCase))
         {
-            var service = _trackingServiceRegistry.FindByCode(group.Key);
+            var service = _trackingServiceRegistry.FindByCode(providerGroup.Key);
             if (service is null)
             {
-                // The provider was unregistered while parcels still reference it.
+                // The provider was unregistered while parcels still reference it. This is a data condition
+                // rather than a failure of the pass: such parcels cannot be routed at all.
                 continue;
             }
 
-            await AuthenticateAsync(service, cancellationToken);
+            // A provider that cannot authenticate is skipped for this pass only; the other providers run.
+            var authenticated = await _callGuard.TryAsync(
+                service.Descriptor.DisplayName,
+                trackId: null,
+                () => AuthenticateAsync(service, cancellationToken));
 
-            foreach (var parcel in group)
+            if (!authenticated)
             {
-                await TrackAndApplyAsync(service, parcel, cancellationToken);
+                continue;
+            }
+
+            // One poll per tracking number: every row that shares it must receive the same answer.
+            foreach (var trackGroup in providerGroup.GroupBy(
+                parcel => parcel.TrackId,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                await _callGuard.TryAsync(
+                    service.Descriptor.DisplayName,
+                    trackGroup.Key,
+                    () => PollAndApplyAsync(service, providerGroup.Key, trackGroup.Key, cancellationToken));
             }
         }
     }
@@ -73,28 +101,60 @@ public sealed class ParcelTrackingSyncService : ITrackingSyncService
             return null;
         }
 
-        var service = _trackingServiceRegistry.FindByCode(parcel.TrackingServiceCode)
-            ?? throw new SyncException(
-                $"Служба «{parcel.TrackingServiceCode}» не зарегистрирована для посылки {parcel.TrackId}.");
+        var service = _trackingServiceRegistry.FindByCode(parcel.TrackingServiceCode);
+        if (service is null)
+        {
+            // The operator asked for this row explicitly, so the unroutable state is reported here.
+            _callGuard.Report(
+                parcel.TrackingServiceCode!,
+                parcel.TrackId,
+                new SyncException("служба не зарегистрирована"));
+            return null;
+        }
 
-        await AuthenticateAsync(service, cancellationToken);
-        return await TrackAndApplyAsync(service, parcel, cancellationToken);
+        // Exactly like the bulk pass, the handshake runs before any polling; a failed handshake is reported
+        // and nothing is polled for this parcel.
+        var authenticated = await _callGuard.TryAsync(
+            service.Descriptor.DisplayName,
+            trackId: null,
+            () => AuthenticateAsync(service, cancellationToken));
+
+        if (!authenticated)
+        {
+            return null;
+        }
+
+        return await _callGuard.TryAsync<TrackingResult?>(
+            service.Descriptor.DisplayName,
+            parcel.TrackId,
+            () => PollAndApplyAsync(
+                service,
+                parcel.TrackingServiceCode!,
+                parcel.TrackId,
+                cancellationToken));
     }
 
     /// <summary>
-    /// Polls one parcel with an already authenticated provider and persists the reported status.
+    /// Polls one tracking number with an already authenticated provider and applies the reported status to
+    /// every parcel registered under it.
     /// </summary>
-    /// <param name="service">The authenticated provider that owns the parcel.</param>
-    /// <param name="parcel">The parcel to poll.</param>
+    /// <param name="service">The authenticated provider that owns the tracking number.</param>
+    /// <param name="trackingServiceCode">The provider code the tracking number was polled under.</param>
+    /// <param name="trackId">The tracking number to poll.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
-    /// <returns>The applied result, or <see langword="null"/> when the parcel is already final.</returns>
-    private async Task<TrackingResult?> TrackAndApplyAsync(
+    /// <returns>
+    /// The applied result, or <see langword="null"/> when every parcel under that tracking number was
+    /// already in a final state.
+    /// </returns>
+    private async Task<TrackingResult?> PollAndApplyAsync(
         ITrackingService service,
-        Parcel parcel,
+        string trackingServiceCode,
+        string trackId,
         CancellationToken cancellationToken)
     {
-        var result = await service.TrackParcelAsync(parcel.TrackId, cancellationToken);
-        return _parcelService.ApplyTrackingResult(parcel.Id, result) ? result : null;
+        var result = await service.TrackParcelAsync(trackId, cancellationToken);
+        var updated = _parcelService.ApplyTrackingResultToTrackId(trackingServiceCode, trackId, result);
+        return updated > 0 ? result : null;
     }
 
     /// <summary>
@@ -108,7 +168,7 @@ public sealed class ParcelTrackingSyncService : ITrackingSyncService
         var credential = _secretStore.GetCredential(service.Descriptor.ToCredentialTarget());
         if (credential is null)
         {
-            throw new SyncException($"Не заданы учётные данные для службы «{service.Descriptor.DisplayName}».");
+            throw new SyncException("не заданы учётные данные");
         }
 
         await service.AuthenticateBasicAsync(credential.Login, credential.Password, cancellationToken);
