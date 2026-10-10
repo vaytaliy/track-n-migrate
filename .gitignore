@@ -363,3 +363,19 @@ MigrationBackup/
 FodyWeavers.xsd
 # Local design notes and screenshots (intentionally untracked)
 mail_integrator_docs/
+
+# ---------------------------------------------------------------------------
+# Pi coding agent project configuration
+#
+# The .pi folder holds this project's agent settings and permission policy, so
+# it must be committed. The generic patterns above (e.g. [Ll]ogs/, *.log) would
+# otherwise ignore parts of it, so re-include the folder and everything in it.
+# ---------------------------------------------------------------------------
+!.pi/
+!.pi/**
+
+# Permission-review logs are runtime output, not configuration.
+.pi/**/logs/
+
+# Agent scratch directory (see AGENTS.md: use project-root tmp/, not WSL /tmp)
+/tmp/
