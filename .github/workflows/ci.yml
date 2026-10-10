@@ -1,0 +1,76 @@
+# Continuous integration for the MailIntegrator WPF application.
+#
+# Runs the headless-safe xUnit suite on every pull request (opened, updated with
+# new commits, reopened) and on every push to the default branch. Tests that open
+# the real WPF windows are tagged `Category=UI` and are skipped here, because a
+# runner has no desktop and the renders only produce value during local work. The
+# job is named `tests-run` so it can be required as a status check in the
+# `protect-main` branch ruleset.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+# A new push to a pull request cancels the previous run for that ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  TEST_PROJECT: MailIntegrator.Tests/MailIntegrator.Tests.csproj
+
+jobs:
+  tests-run:
+    name: tests-run
+    runs-on: windows-latest
+
+    # A hung test host must fail the check instead of holding the runner for hours.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore "$env:TEST_PROJECT"
+
+      - name: Build
+        run: dotnet build "$env:TEST_PROJECT" --configuration Release --no-restore
+
+      - name: Test
+        # `Category=UI` is the off-screen XAML smoke test, which is run locally with
+        # `dotnet test --filter "Category=UI"`. `--blame-hang` writes a hang dump if a
+        # test wedges, so a stuck run still produces a diagnosable failure.
+        run: >
+          dotnet test "$env:TEST_PROJECT" --configuration Release --no-build
+          --filter "Category!=UI"
+          --blame-hang --blame-hang-timeout 5m
+          --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: "**/TestResults/**/*.trx"
+          if-no-files-found: ignore
