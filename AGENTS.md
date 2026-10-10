@@ -10,7 +10,18 @@
 
 
 
-For versioning control you as an agent will use use preconfigured "gh" (access with granular permissions). 
+## Version control
+
+**DO NOT use or attempt `git`.** The agent has **no git access** in this project; every `git`
+command is denied by the permission policy. This is deliberate and permanent - do not try to work
+around it, look for a git binary, inspect `.git`, or ask the user to enable git.
+
+All version control goes through the preconfigured **`gh`** (access with granular permissions):
+branches, commits, pushes and pull requests are created through the GitHub API (`gh api`), never
+through `git`. Use plain `gh` for reading CI runs/logs, pull requests and reviews.
+
+Because the working tree is the only source of truth the agent can read, a commit made this way
+must contain exactly the files the agent changed - never whole-tree snapshots.
 
 Make sure you follow the set development steps:
 
@@ -52,4 +63,10 @@ Make sure you follow the set development steps:
 4. Use the project-root scratch dir `./tmp/` (git-ignored) for temporary files, downloads, and tool output, and set `TMPDIR=./tmp` for tools that honor it. Do not use the WSL system `/tmp`: it is outside the project (so it trips the `external_directory` gate) and is wiped when WSL restarts.
 5. If a bash command genuinely needs `/mnt/...`, expect an `external_directory` prompt. That prompt is this flavor mismatch, not a real out-of-project access. Do not "work around" it by exploring `/mnt`; use the built-in tools or ask the user.
 6. This is an environment-level defect in `@gotgenes/pi-permission-system` (win32 flavor + WSL bash), not a repo bug. Real fixes live outside the code: install Git for Windows / set `shellPath` to Git Bash so pi's assumed MSYS mounts match, or add an explicit project allow rule such as `"external_directory": { "/mnt/d/projects/mail_integrator/**": "allow" }`.
+
+### 2026-10-11 - No agent access to `git`; do not keep probing it
+
+**Symptom.** During a fix the agent repeatedly ran `git status`, `git log`, `git diff` and inspected `.git` to prepare a branch/commit. Every `git` command is rejected by the permission policy (`Git is disabled in this project by the project permission policy`), which wasted tool calls and annoyed the user.
+
+**Rule.** The agent has **no `git` access here and never will**. Do not run `git` in any form, do not read `.git/*` to infer branch/HEAD state, and do not propose "enable git so I can commit". When the user asks for a commit, do it through the preconfigured `gh` GitHub API (`git/blobs` -> `git/trees` -> `git/commits` -> `git/refs`), touching only the files the agent changed. Use plain `gh` reads for CI runs, logs, PRs and reviews.
 

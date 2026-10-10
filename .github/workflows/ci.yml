@@ -1,11 +1,9 @@
 # Continuous integration for the MailIntegrator WPF application.
 #
-# Runs the headless-safe xUnit suite on every pull request (opened, updated with
-# new commits, reopened) and on every push to the default branch. Tests that open
-# the real WPF windows are tagged `Category=UI` and are skipped here, because a
-# runner has no desktop and the renders only produce value during local work. The
-# job is named `tests-run` so it can be required as a status check in the
-# `protect-main` branch ruleset.
+# Runs the xUnit suite on every pull request (opened, updated with new commits,
+# reopened) and on every push to the default branch. The suite is headless-safe:
+# no test opens a real WPF window. The job is named `tests-run` so it can be
+# required as a status check in the `protect-main` branch ruleset.
 
 name: CI
 
@@ -58,12 +56,10 @@ jobs:
         run: dotnet build "$env:TEST_PROJECT" --configuration Release --no-restore
 
       - name: Test
-        # `Category=UI` is the off-screen XAML smoke test, which is run locally with
-        # `dotnet test --filter "Category=UI"`. `--blame-hang` writes a hang dump if a
-        # test wedges, so a stuck run still produces a diagnosable failure.
+        # `--blame-hang` writes a hang dump if a test wedges, so a stuck run still
+        # produces a diagnosable failure instead of holding the runner.
         run: >
           dotnet test "$env:TEST_PROJECT" --configuration Release --no-build
-          --filter "Category!=UI"
           --blame-hang --blame-hang-timeout 5m
           --logger "trx;LogFileName=test-results.trx"
 
