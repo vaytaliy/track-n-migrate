@@ -1,0 +1,403 @@
+﻿<Window x:Class="MailIntegrator.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:MailIntegrator.Views.Controls"
+        xmlns:models="clr-namespace:MailIntegrator.Models"
+        xmlns:vm="clr-namespace:MailIntegrator.ViewModels"
+        mc:Ignorable="d"
+        Title="Отслеживание посылок и интеграция в 1С — WPF приложение"
+        Height="760"
+        Width="1600"
+        MinHeight="520"
+        MinWidth="1100"
+        Background="{StaticResource CanvasBrush}"
+        FontFamily="{StaticResource UiFontFamily}"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <!-- The footer band: a fixed 48px, never resized by the messages it shows. -->
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ============================== Toolbar and sync status ============================== -->
+        <!--
+            MinHeight reserves the height of the sync card WITH its progress bar, so the row never
+            changes height (and the grid never jumps) when a synchronisation pass starts or finishes.
+        -->
+        <Grid Grid.Row="0" MinHeight="56" Margin="0,0,0,14">
+            <!--
+                Every child is centered vertically on purpose: a horizontal StackPanel arranges its
+                children at the panel's full height, and the sync card (with its progress line) is
+                taller than a button, so without the explicit alignment the buttons would stretch
+                whenever a synchronisation pass makes the card appear.
+            -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Button Command="{Binding RequestStatusesCommand}"
+                        Style="{StaticResource ToolbarButtonStyle}"
+                        VerticalAlignment="Center"
+                        ToolTip="Запросить статус посылок в Почте России">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource IconPathStyle}"
+                              Data="{StaticResource RefreshGeometry}"
+                              Stroke="{StaticResource InfoBrush}" />
+                        <TextBlock Text="Запросить статус посылок" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <Button Command="{Binding MigrateTo1CCommand}"
+                        Style="{StaticResource ToolbarButtonStyle}"
+                        VerticalAlignment="Center"
+                        Margin="10,0,0,0"
+                        ToolTip="Экспорт посылок в 1С">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource IconPathStyle}"
+                              Data="{StaticResource ExportGeometry}"
+                              Stroke="{StaticResource WarningBrush}" />
+                        <TextBlock Text="Экспорт в 1С" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <Button Command="{Binding OpenSettingsCommand}"
+                        Style="{StaticResource ToolbarButtonStyle}"
+                        VerticalAlignment="Center"
+                        Margin="10,0,0,0"
+                        ToolTip="Настройки доступа к сервисам">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource IconPathStyle}"
+                              Data="{StaticResource SettingsGeometry}"
+                              Stroke="{StaticResource ForegroundMutedBrush}" />
+                        <TextBlock Text="Авторизация" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <!-- The sync strip sits directly after the settings button, as required by the design. -->
+                <controls:SyncStatusBar DataContext="{Binding Sync}"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Always the top-right corner, whatever the window size. -->
+            <Button x:Name="ColumnsButton"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Margin="10,0,0,0"
+                    ToolTip="Выберите отображаемые колонки"
+                    Click="OnColumnsButtonClick">
+                <StackPanel Orientation="Horizontal">
+                    <Path Style="{StaticResource IconPathStyle}"
+                          Data="{StaticResource SettingsGeometry}"
+                          Stroke="{StaticResource ForegroundMutedBrush}" />
+                    <TextBlock Text="Колонки" Margin="8,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <Popup x:Name="ColumnsPopup"
+                   PlacementTarget="{Binding ElementName=ColumnsButton}"
+                   Placement="Bottom"
+                   HorizontalOffset="-6"
+                   AllowsTransparency="True"
+                   StaysOpen="False">
+                <controls:ColumnsPopover DataContext="{Binding ColumnLayout}" />
+            </Popup>
+        </Grid>
+
+        <!-- ============================== Parcel grid ============================== -->
+        <DataGrid x:Name="ParcelsGrid"
+                  Grid.Row="1"
+                  Style="{StaticResource ParcelDataGridStyle}"
+                  ItemsSource="{Binding Parcels}"
+                  SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                  BeginningEdit="OnParcelsGridBeginningEdit"
+                  SelectionChanged="OnParcelsGridSelectionChanged"
+                  PreviewMouseDown="OnParcelsGridPreviewMouseDown"
+                  PreviewKeyDown="OnParcelsGridPreviewKeyDown"
+                  RowEditEnding="OnParcelsGridRowEditEnding"
+                  Sorting="OnParcelsGridSorting"
+                  LostKeyboardFocus="OnParcelsGridLostKeyboardFocus">
+
+            <!--
+                The row item implements INotifyDataErrorInfo, so the template-column content presenters
+                inherit the row error and would draw the default red adorner over plain text cells.
+                Error feedback is limited to the validated editors inside InputTextBoxStyle and
+                InputComboBoxStyle, which carry their own HasError trigger.
+            -->
+            <DataGrid.Resources>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="Validation.ErrorTemplate" Value="{x:Null}" />
+                </Style>
+            </DataGrid.Resources>
+
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow" BasedOn="{StaticResource DataGridRowStyle}">
+                    <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnRowPreviewMouseRightButtonDown" />
+                </Style>
+            </DataGrid.RowStyle>
+
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Проверить статус"
+                              Command="{Binding CheckParcelStatusCommand}"
+                              CommandParameter="{Binding SelectedRow}"
+                              IsEnabled="{Binding SelectedRow.CanCheckStatus}" />
+                    <Separator />
+                    <MenuItem Header="Удалить"
+                              Command="{Binding DeleteParcelCommand}"
+                              CommandParameter="{Binding SelectedRow}"
+                              IsEnabled="{Binding SelectedRow.IsEditable}" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
+
+            <DataGrid.Columns>
+                <!-- Row number, replaced by a padlock once the parcel is exported to 1C. -->
+                <DataGridTemplateColumn Header="#" Width="44" SortMemberPath="RowNumber" CanUserSort="False" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Path Style="{StaticResource SmallIconPathStyle}"
+                                      Data="{StaticResource LockGeometry}"
+                                      Stroke="{StaticResource ForegroundMutedBrush}"
+                                      HorizontalAlignment="Left"
+                                      Visibility="{Binding IsMigratedTo1CFlag, Converter={StaticResource BoolToVisibility}}" />
+                                <TextBlock Style="{StaticResource GridCellMutedTextStyle}"
+                                           Text="{Binding RowNumberDisplay}"
+                                           Visibility="{Binding IsMigratedTo1CFlag, Converter={StaticResource InverseBoolToVisibility}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="Дата создания"
+                                    Width="190"
+                                    IsReadOnly="True"
+                                    SortMemberPath="CreatedDatetimeUtc"
+                                    Binding="{Binding CreatedDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}" />
+
+
+                <!-- Editable while the parcel has not been exported to 1C. The edit hint is in the header. -->
+                <DataGridTemplateColumn Header="Номер счета"
+                                        Width="175"
+                                        SortMemberPath="PaymentNumber"
+                                        HeaderTemplate="{StaticResource EditableColumnHeaderTemplate}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <controls:EditableTextCell CellContent="{Binding PaymentNumberCell}"
+                                                       IsEmphasised="True"
+                                                       IsEditable="{Binding IsEditable}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <TextBox Style="{StaticResource InputTextBoxStyle}"
+                                     Text="{Binding PaymentNumber, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
+
+                <!--
+                    Editable while the parcel has not been exported to 1C. The link opens the provider's own
+                    tracking page and is rendered only when the provider publishes one for this number.
+                -->
+                <DataGridTemplateColumn Header="Трекинг #"
+                                        Width="175"
+                                        SortMemberPath="TrackId"
+                                        HeaderTemplate="{StaticResource EditableColumnHeaderTemplate}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <controls:EditableTextCell CellContent="{Binding TrackIdCell}"
+                                                       IsEmphasised="True"
+                                                       IsEditable="{Binding IsEditable}"
+                                                       LinkUrl="{Binding TrackingUrl}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <TextBox Style="{StaticResource InputTextBoxStyle}"
+                                     Text="{Binding TrackId, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Provider selection: a dropdown on the draft row, read-only on saved rows. -->
+                <DataGridTemplateColumn Header="Служба" Width="150" IsReadOnly="True" SortMemberPath="TrackingServiceCode">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding TrackingServiceDisplay}"
+                                           Visibility="{Binding IsDraft, Converter={StaticResource InverseBoolToVisibility}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsTrackingServiceMissing}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource ForegroundMutedBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <ComboBox Style="{StaticResource InputComboBoxStyle}"
+                                          ItemsSource="{Binding TrackingServices}"
+                                          SelectedValuePath="Code"
+                                          SelectedValue="{Binding SelectedTrackingServiceCode, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}"
+                                          Visibility="{Binding IsDraft, Converter={StaticResource BoolToVisibility}}">
+                                    <!--
+                                        An explicit item template rather than DisplayMemberPath: the custom
+                                        ComboBox template presents the selection through
+                                        SelectionBoxItemTemplate, which WPF only fills from ItemTemplate, so
+                                        DisplayMemberPath would render the descriptor's ToString().
+                                    -->
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="Дата отправки"
+                                    Width="140"
+                                    IsReadOnly="True"
+                                    SortMemberPath="SentDatetimeUtc"
+                                    Binding="{Binding SentDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}" />
+
+                <DataGridTextColumn Header="Дата получения"
+                                    Width="140"
+                                    IsReadOnly="True"
+                                    SortMemberPath="ReceivedDatetimeUtc"
+                                    Binding="{Binding ReceivedDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}" />
+
+                <!-- Displayed in local time; only the 1C export instant is shown in UTC. -->
+                <DataGridTextColumn Header="Посл. дата проверки"
+                                    Width="165"
+                                    IsReadOnly="True"
+                                    SortMemberPath="LastCheckedDatetimeUtc"
+                                    Binding="{Binding LastCheckedDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}" />
+
+                <!--
+                    Flat status text: only the font colour carries the state (matched on the enum, never on a
+                    string). No badge, no fill, no icon, so the column stays calm on the eyes.
+                -->
+                <DataGridTemplateColumn Header="Посл. статус" Width="150" SortMemberPath="Status">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding StatusLabel}" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellMutedTextStyle}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Delivered}">
+                                                <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.InTransit}">
+                                                <Setter Property="Foreground" Value="{StaticResource InfoBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Customs}">
+                                                <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.OutForDelivery}">
+                                                <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Processing}">
+                                                <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:ParcelStatus.Exception}">
+                                                <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Editable while the parcel has not been exported to 1C. -->
+                <!--
+                    Fixed width on purpose: the columns keep their natural size and the grid overflows
+                    into its bottom horizontal scrollbar instead of squeezing the columns.
+                -->
+                <DataGridTemplateColumn Header="Комментарий"
+                                        Width="320"
+                                        MinWidth="200"
+                                        SortMemberPath="Comment"
+                                        HeaderTemplate="{StaticResource EditableColumnHeaderTemplate}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <controls:EditableTextCell CellContent="{Binding CommentCell}"
+                                                       IsLocked="{Binding IsMigratedTo1CFlag}"
+                                                       Caption="{Binding CommentLockCaption}"
+                                                       TextWrapping="Wrap" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <TextBox Style="{StaticResource InputTextBoxStyle}"
+                                     Text="{Binding Comment, UpdateSourceTrigger=PropertyChanged}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Header="1С интеграция" Width="100" SortMemberPath="IsMigratedTo1CFlag">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox Style="{StaticResource DarkCheckBoxStyle}"
+                                      IsChecked="{Binding IsMigratedTo1CFlag, Mode=OneWay}"
+                                      IsHitTestVisible="False" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="Дата интеграции в 1С"
+                                    Width="180"
+                                    IsReadOnly="True"
+                                    SortMemberPath="MigratedTo1CDatetimeUtc"
+                                    Binding="{Binding MigratedTo1CDatetimeDisplay}"
+                                    ElementStyle="{StaticResource GridCellTextStyle}"
+                                    HeaderStyle="{StaticResource UtcColumnHeaderStyle}" />
+
+                <!--
+                    Explicit submit affordance: only the draft row shows the button, saved rows stay
+                    empty. The column is read-only so the first click reaches the button instead of
+                    switching the cell into edit mode.
+                -->
+                <DataGridTemplateColumn Header="Действие" Width="84" IsReadOnly="True" CanUserSort="False" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button x:Name="AddDraftParcelButton"
+                                    Tag="DraftAddButton"
+                                    Style="{StaticResource RowActionButtonStyle}"
+                                    Click="OnAddParcelClick"
+                                    ToolTip="Добавить посылку (Enter)"
+                                    Visibility="{Binding IsDraft, Converter={StaticResource BoolToVisibility}}">
+                                <Path Style="{StaticResource SmallIconPathStyle}"
+                                      Data="{StaticResource AddGeometry}"
+                                      Stroke="White" />
+                            </Button>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!--
+            Fixed-height footer of the handled failures of the last pass. It is always reserved and empty
+            while there is nothing to report, so messages appearing never resize the grid above it.
+        -->
+        <controls:StatusFooter x:Name="FailureFooter"
+                               Grid.Row="2"
+                               Height="48"
+                               Margin="0,14,0,0"
+                               Messages="{Binding ErrorLog.Errors}" />
+    </Grid>
+</Window>

@@ -1,0 +1,124 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!-- ============================== Palette ============================== -->
+    <!-- Dark theme matching the approved mockups: near-black canvas, subtle borders, blue accent. -->
+
+    <Color x:Key="CanvasColor">#FF1B1D21</Color>
+    <Color x:Key="SurfaceColor">#FF23262B</Color>
+    <Color x:Key="SurfaceRaisedColor">#FF2B2F35</Color>
+    <Color x:Key="SurfaceHoverColor">#FF33383F</Color>
+    <Color x:Key="BorderColor">#FF3A3F47</Color>
+    <Color x:Key="BorderSubtleColor">#FF2F343A</Color>
+
+    <Color x:Key="ForegroundColor">#FFE8EAED</Color>
+    <Color x:Key="ForegroundMutedColor">#FF9BA1A9</Color>
+    <Color x:Key="ForegroundDisabledColor">#FF6B7178</Color>
+
+    <Color x:Key="AccentColor">#FF2F7FD8</Color>
+    <Color x:Key="AccentHoverColor">#FF3D8FEA</Color>
+    <Color x:Key="AccentMutedColor">#FF4A7BA7</Color>
+
+    <Color x:Key="SelectionColor">#FF2A4A72</Color>
+    <Color x:Key="RowAlternateColor">#FF1F2226</Color>
+    <Color x:Key="RowMigratedColor">#FF202327</Color>
+    <!-- Accent-tinted surface that marks the unsaved draft row as "new record". -->
+    <Color x:Key="RowDraftColor">#FF1E2A3A</Color>
+
+    <Color x:Key="SuccessColor">#FF3FB950</Color>
+    <Color x:Key="SuccessSurfaceColor">#FF16301C</Color>
+    <Color x:Key="WarningColor">#FFD29922</Color>
+    <Color x:Key="WarningSurfaceColor">#FF33280D</Color>
+    <Color x:Key="ErrorColor">#FFF85149</Color>
+    <Color x:Key="ErrorSurfaceColor">#FF3A1A18</Color>
+    <!-- Subdued red for the footer error list: noticeable without shouting. -->
+    <Color x:Key="FaintErrorColor">#FFDE9A94</Color>
+    <Color x:Key="InfoColor">#FF4C9AFF</Color>
+    <Color x:Key="InfoSurfaceColor">#FF152840</Color>
+
+    <!-- ============================== Brushes ============================== -->
+
+    <SolidColorBrush x:Key="CanvasBrush" Color="{StaticResource CanvasColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource SurfaceHoverColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource BorderSubtleColor}" />
+
+    <SolidColorBrush x:Key="ForegroundBrush" Color="{StaticResource ForegroundColor}" />
+    <SolidColorBrush x:Key="ForegroundMutedBrush" Color="{StaticResource ForegroundMutedColor}" />
+    <SolidColorBrush x:Key="ForegroundDisabledBrush" Color="{StaticResource ForegroundDisabledColor}" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentMutedBrush" Color="{StaticResource AccentMutedColor}" />
+
+    <SolidColorBrush x:Key="SelectionBrush" Color="{StaticResource SelectionColor}" />
+    <SolidColorBrush x:Key="RowAlternateBrush" Color="{StaticResource RowAlternateColor}" />
+    <SolidColorBrush x:Key="RowMigratedBrush" Color="{StaticResource RowMigratedColor}" />
+    <SolidColorBrush x:Key="RowDraftBrush" Color="{StaticResource RowDraftColor}" />
+
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="{StaticResource SuccessSurfaceColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
+    <SolidColorBrush x:Key="WarningSurfaceBrush" Color="{StaticResource WarningSurfaceColor}" />
+    <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
+    <SolidColorBrush x:Key="ErrorSurfaceBrush" Color="{StaticResource ErrorSurfaceColor}" />
+    <SolidColorBrush x:Key="FaintErrorBrush" Color="{StaticResource FaintErrorColor}" />
+    <SolidColorBrush x:Key="InfoBrush" Color="{StaticResource InfoColor}" />
+    <SolidColorBrush x:Key="InfoSurfaceBrush" Color="{StaticResource InfoSurfaceColor}" />
+
+    <!-- ============================== Typography ============================== -->
+
+    <FontFamily x:Key="UiFontFamily">Segoe UI</FontFamily>
+    <FontFamily x:Key="MonoFontFamily">Consolas</FontFamily>
+
+    <sys:Double x:Key="FontSizeSmall">11</sys:Double>
+    <sys:Double x:Key="FontSizeNormal">12.5</sys:Double>
+    <sys:Double x:Key="FontSizeMedium">13.5</sys:Double>
+    <sys:Double x:Key="FontSizeLarge">15</sys:Double>
+
+    <Style x:Key="BaseTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontSize" Value="{StaticResource FontSizeNormal}" />
+        <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+    </Style>
+
+    <Style x:Key="MutedTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
+        <Setter Property="Foreground" Value="{StaticResource ForegroundMutedBrush}" />
+    </Style>
+
+    <Style x:Key="SmallMutedTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MutedTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource FontSizeSmall}" />
+    </Style>
+
+    <!-- One message of the fixed-height footer: wrapped, faint red and icon-free. -->
+    <Style x:Key="FooterMessageTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SmallMutedTextStyle}">
+        <Setter Property="Foreground" Value="{StaticResource FaintErrorBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="GridCellTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="GridCellMutedTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MutedTextStyle}">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="SectionHeaderTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource FontSizeLarge}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- ============================== Metrics ============================== -->
+
+    <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="BadgeCornerRadius">4</CornerRadius>
+    <Thickness x:Key="ControlPadding">12,6</Thickness>
+
+</ResourceDictionary>
