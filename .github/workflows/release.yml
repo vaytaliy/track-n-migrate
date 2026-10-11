@@ -1,0 +1,126 @@
+# Release pipeline for the MailIntegrator WPF application.
+#
+# Pushing a `v<major>.<minor>.<patch>` tag (optionally with a `-prerelease` suffix) on the
+# default branch builds a self-contained win-x64 package and publishes it as a GitHub
+# Release with the zip and a SHA256 checksum.
+#
+# `workflow_dispatch` is a rehearsal: it builds and uploads the same zip as a workflow
+# artifact and never creates a Release, so a manual run cannot create a tag.
+#
+# The version always comes from the tag, never from a checked-in constant;
+# `Directory.Build.props` only carries the development default.
+
+name: Release
+
+on:
+  push:
+    tags: [ 'v*.*.*' ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to rehearse, without the v prefix, for example 1.2.3'
+        required: true
+
+# Never cancel a release mid-flight.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  APP_PROJECT: MailIntegrator/MailIntegrator.csproj
+
+jobs:
+  # The same suite that gates pull requests gates the release.
+  tests-run:
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: package
+    needs: tests-run
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    # Publishing the Release is the only write this pipeline needs.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history lets the SDK stamp the source revision into the assembly.
+          fetch-depth: 0
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $raw = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}' } else { 'v${{ github.event.inputs.version }}' }
+          $semver = $raw.TrimStart('v')
+          if ($semver -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.\-]+)?$') {
+            throw "Ref '$raw' is not a valid release version (expected vMAJOR.MINOR.PATCH[-prerelease])."
+          }
+          "version=$semver" >> $env:GITHUB_OUTPUT
+          "prerelease=$($semver.Contains('-').ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "asset=MailIntegrator-$semver-win-x64.zip" >> $env:GITHUB_OUTPUT
+
+      - name: Publish
+        # Self-contained win-x64, so operator machines need no .NET Desktop Runtime.
+        # Trimming is deliberately not enabled: it is unsupported for WPF.
+        run: >
+          dotnet publish "$env:APP_PROJECT"
+          --configuration Release --runtime win-x64 --self-contained true
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishReadyToRun=true
+          -p:ContinuousIntegrationBuild=true
+          --output ./artifacts/publish
+
+      - name: Verify the payload
+        shell: pwsh
+        run: |
+          foreach ($file in @('MailIntegrator.exe', 'appConfig.json')) {
+            if (-not (Test-Path "./artifacts/publish/$file")) {
+              throw "Missing $file in the publish output."
+            }
+          }
+          if (Get-ChildItem ./artifacts/publish -Recurse -Filter *.db) {
+            throw 'The publish output contains a database file; operator data must never be packaged.'
+          }
+
+      - name: Package and checksum
+        shell: pwsh
+        run: |
+          Compress-Archive -Path ./artifacts/publish/* -DestinationPath "./artifacts/${{ steps.version.outputs.asset }}"
+          $hash = (Get-FileHash "./artifacts/${{ steps.version.outputs.asset }}" -Algorithm SHA256).Hash
+          "$hash  ${{ steps.version.outputs.asset }}" | Set-Content ./artifacts/SHA256SUMS.txt
+
+      - name: Upload rehearsal artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MailIntegrator-${{ steps.version.outputs.version }}-win-x64
+          path: ./artifacts/*
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" `
+            "./artifacts/${{ steps.version.outputs.asset }}" ./artifacts/SHA256SUMS.txt `
+            --title "v${{ steps.version.outputs.version }}" `
+            --notes-file ./mail_integrator_docs/plans/release-notes-upgrade-block.md `
+            --generate-notes `
+            $(if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { '--prerelease' })

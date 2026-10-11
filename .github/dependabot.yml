@@ -1,0 +1,22 @@
+# Keeps dependencies and the workflow actions current. Updates are grouped, so a weekly
+# run opens one pull request per ecosystem instead of one per package.
+
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - /MailIntegrator
+      - /MailIntegrator.Tests
+    schedule:
+      interval: weekly
+    groups:
+      nuget:
+        patterns: [ '*' ]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: [ '*' ]
