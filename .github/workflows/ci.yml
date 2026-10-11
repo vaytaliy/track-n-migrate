@@ -3,7 +3,10 @@
 # Runs the xUnit suite on every pull request (opened, updated with new commits,
 # reopened) and on every push to the default branch. The suite is headless-safe:
 # no test opens a real WPF window. The job is named `tests-run` so it can be
-# required as a status check in the `protect-main` branch ruleset.
+# required as a status check in the `master_ruleset` branch ruleset.
+#
+# The `workflow_call` trigger lets `.github/workflows/release.yml` run this exact
+# suite before packaging, so a release can never ship an untested commit.
 
 name: CI
 
@@ -11,6 +14,7 @@ on:
   pull_request:
   push:
     branches: [ master ]
+  workflow_call:
 
 # A new push to a pull request cancels the previous run for that ref.
 concurrency:
@@ -26,6 +30,7 @@ env:
   TEST_PROJECT: MailIntegrator.Tests/MailIntegrator.Tests.csproj
 
 jobs:
+  # Do not rename this job: `master_ruleset` requires the `tests-run` check.
   tests-run:
     name: tests-run
     runs-on: windows-latest
@@ -53,20 +58,25 @@ jobs:
         run: dotnet restore "$env:TEST_PROJECT"
 
       - name: Build
-        run: dotnet build "$env:TEST_PROJECT" --configuration Release --no-restore
+        # The repository builds warning-free, so a warning fails the check.
+        run: dotnet build "$env:TEST_PROJECT" --configuration Release --no-restore -warnaserror
 
       - name: Test
         # `--blame-hang` writes a hang dump if a test wedges, so a stuck run still
-        # produces a diagnosable failure instead of holding the runner.
+        # produces a diagnosable failure instead of holding the runner. Coverage is
+        # collected for information only; it never gates the build.
         run: >
           dotnet test "$env:TEST_PROJECT" --configuration Release --no-build
           --blame-hang --blame-hang-timeout 5m
+          --collect "XPlat Code Coverage"
           --logger "trx;LogFileName=test-results.trx"
 
-      - name: Upload test results
+      - name: Upload test results and coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: "**/TestResults/**/*.trx"
+          path: |
+            **/TestResults/**/*.trx
+            **/TestResults/**/coverage.cobertura.xml
           if-no-files-found: ignore

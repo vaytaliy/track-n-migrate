@@ -1,0 +1,15 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      Development-time default only. The release pipeline passes -p:Version from the git
+      tag, which is the single source of truth for a shipped build.
+    -->
+    <Version>0.1.0</Version>
+    <Product>MailIntegrator</Product>
+    <Company>MailIntegrator</Company>
+    <RepositoryUrl>https://github.com/vaytaliy/track-n-migrate</RepositoryUrl>
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+</Project>
