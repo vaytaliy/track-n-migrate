@@ -121,6 +121,5 @@ jobs:
           gh release create "v${{ steps.version.outputs.version }}" `
             "./artifacts/${{ steps.version.outputs.asset }}" ./artifacts/SHA256SUMS.txt `
             --title "v${{ steps.version.outputs.version }}" `
-            --notes-file ./mail_integrator_docs/plans/release-notes-upgrade-block.md `
             --generate-notes `
             $(if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { '--prerelease' })
